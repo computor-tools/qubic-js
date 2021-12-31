@@ -1,0 +1,39 @@
+{
+  "extends": ["plugin:prettier/recommended", "eslint:recommended", "plugin:import/recommended", "plugin:jsdoc/recommended"],
+  "plugins": ["prettier", "jsdoc", "es", "jest"],
+  "rules": {
+    "func-style": ["error", "expression"],
+    "no-console": 2,
+    "es/no-arrow-functions": 2,
+    "jsdoc/check-examples": 1,
+    "jsdoc/check-param-names": 0,
+    "jsdoc/require-param-description": 0,
+    "jsdoc/require-returns-description": 0,
+    "jsdoc/tag-lines": 0
+  },
+  "parserOptions": {
+    "ecmaVersion": 2021
+  },
+  "env": {
+    "es2021": true,
+    "browser": true,
+    "node": true
+  },
+  "ignorePatterns": ["src/crypto/libFourQ_K12.js", "coverage", "lib"],
+  "overrides": [{
+    "files": ["babel.config.cjs", "commitlint.config.cjs", "setupJestAfterEnv.js"],
+    "env": {
+      "node": true
+    }
+  }, {
+    "files": ["test/**/*.test.js"],
+    "globals": {
+      "assert": false,
+      "Try": false
+    },
+    "env": {
+      "node": true,
+      "jest/globals": true
+    }
+  }]
+}

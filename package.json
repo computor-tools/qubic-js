@@ -1,0 +1,57 @@
+{
+  "name": "qubic-js",
+  "version": "0.0.0",
+  "description": "Library to deploy qubics and fetch results.",
+  "main": "./src/index.js",
+  "type": "module",
+  "packageManager": "pnpm@6.24.3",
+  "scripts": {
+    "build": "babel src --out-dir lib",
+    "prepublish": "pnpm run build",
+    "test": "jest",
+    "test:staged": "jest --bail --forceExit --findRelatedTests",
+    "lint": "eslint .",
+    "prepare": "husky install",
+    "docs": "jsdoc2md --template README.hbs --plugin dmd-readable --files './src/*.js' './src/**/*.js' > README.md"
+  },
+  "author": "Chris Dukakis <chrisdukakis@gmail.com>",
+  "dependencies": {
+    "big-integer": "^1.6.50",
+    "eventemitter2": "^6.4.5",
+    "isomorphic-ws": "^4.0.1",
+    "level": "^7.0.1",
+    "ws": "^8.2.3"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.16.0",
+    "@babel/core": "^7.15.8",
+    "@babel/plugin-transform-runtime": "^7.16.0",
+    "@babel/preset-env": "^7.15.8",
+    "@commitlint/cli": "^14.1.0",
+    "@commitlint/config-conventional": "^14.1.0",
+    "dmd-readable": "^1.2.4",
+    "eslint": "^7.0.0",
+    "eslint-config-prettier": "^8.3.0",
+    "eslint-plugin-es": "^4.1.0",
+    "eslint-plugin-import": "^2.25.2",
+    "eslint-plugin-jest": "^25.2.4",
+    "eslint-plugin-jsdoc": "^37.0.3",
+    "eslint-plugin-prettier": "^4.0.0",
+    "get-port": "^6.0.0",
+    "husky": "^7.0.0",
+    "jest": "^27.3.1",
+    "jsdoc-to-markdown": "^7.1.0",
+    "lint-staged": "^12.0.2",
+    "nyc": "^15.1.0",
+    "prettier": "^2.4.1",
+    "rimraf": "^3.0.2"
+  },
+  "browser": {
+    "fs": false,
+    "path": false
+  },
+  "lint-staged": {
+    "*.{js, cjs}": "eslint --cache --fix",
+    "{src, test}/**/*.js": "pnpm run test:staged"
+  }
+}
