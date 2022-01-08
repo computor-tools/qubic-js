@@ -80,6 +80,7 @@ export const createClient = function ({
       })
   );
   const infoListeners = [];
+  const emittersByEnvironment = new Map();
 
   const clientMixin = function () {
     const that = this;
@@ -174,6 +175,47 @@ export const createClient = function ({
           });
           return transfer;
         });
+      },
+
+      /**
+       * Subcribes to an environment.
+       *
+       * @function addEnvironmentListener
+       * @param {string} environment - Environment hash.
+       * @param {Function} listener
+       *
+       * @example const listener = function (data) {
+       *   console.log(data);
+       * };
+       *
+       * client.addEvironmentListener(
+       *   'BPFJANADOGBDLNNONDILEMAICAKMEEGBFPJBKPBCEDFJIALDONODMAIMDBFKCFEE',
+       *   listener
+       * );
+       *
+       */
+      addEnvironmentListener(environment, listener) {
+        let emitter = emittersByEnvironment.get(environment);
+        if (emitter === undefined) {
+          emitter = connection.sendCommand(5, { hash: environment });
+          emittersByEnvironment.set(environment, emitter);
+        }
+        emitter.addListener('data', listener);
+      },
+
+      /**
+       * Unsubscribes from an environment.
+       *
+       * @function removeEnvironmentListener
+       * @param {string} environment - Environment hash.
+       * @param {Function} listener
+       */
+      removeEnvironmentListener(environment, listener) {
+        let emitter = emittersByEnvironment.get(environment);
+        if (emitter !== undefined) {
+          connection.sendCommand(6, { hash: environment });
+          emitter.removeListener(environment, listener);
+        }
       },
 
       /**

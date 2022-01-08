@@ -76,6 +76,7 @@ export const createConnection = function ({
   const statusResponses = [];
   const responsesByKey = new Map();
   const requestsByKey = new Map();
+  const emittersByEnvironment = new Map();
 
   const onopen = function (socket) {
     for (const request of requestsByKey.values()) {
@@ -134,19 +135,54 @@ export const createConnection = function ({
           return;
         }
 
-        const key =
-          parsedMessage.command.toString() + (parsedMessage.identity || parsedMessage.hash);
+        const { hash, identity } = parsedMessage;
+        const key = command.toString() + (identity || hash);
         const responses = responsesByKey.get(key);
         if (responses !== undefined) {
-          responses[i] = message.data;
-          if (compareResponses(responses) >= 2) {
-            responses.resolve(parsedMessage);
-            responsesByKey.delete(key);
-            requestsByKey.delete(key);
-          } else if (responses.length === NUMBER_OF_CONNECTIONS) {
-            responses.reject('Invalid responses.');
-            responsesByKey.delete(key);
-            requestsByKey.delete(key);
+          if (command === 5) {
+            const { epoch, tick, data } = parsedMessage;
+            if (responses[i] === undefined) {
+              responses[i] = new Map();
+            }
+            let dataByTick = responses[i].get(epoch);
+            if (dataByTick === undefined) {
+              dataByTick = new Map();
+              responses[i].set(epoch, dataByTick);
+            }
+
+            dataByTick.set(tick, data);
+
+            if (
+              compareResponses(
+                responses.map(function (response) {
+                  return response.get(epoch)?.get(tick);
+                })
+              ) >= 2
+            ) {
+              responses.forEach(function (response) {
+                const dataByEpoch = response.get(epoch);
+                dataByEpoch.delete(tick);
+                if (dataByEpoch.size === 0) {
+                  response.delete(epoch);
+                }
+              });
+              emittersByEnvironment.get(hash).emit('data', {
+                epoch,
+                tick,
+                data,
+              });
+            }
+          } else {
+            responses[i] = message.data;
+            if (compareResponses(responses) >= 2) {
+              responses.resolve(parsedMessage);
+              responsesByKey.delete(key);
+              requestsByKey.delete(key);
+            } else if (responses.length === NUMBER_OF_CONNECTIONS) {
+              responses.reject('Invalid responses.');
+              responsesByKey.delete(key);
+              requestsByKey.delete(key);
+            }
           }
         }
       } catch {
@@ -182,13 +218,15 @@ export const createConnection = function ({
    * | `1` | `{ identity }` | `{ identity, identityNonce }` | Fetches `identityNonce`. |
    * | `2` | `{ identity }` | `{ identity, energy }` | Fetches `energy`. |
    * | `3` | `{ message, signature }` | `void` | Sends a transfer with `base64`-encoded `message` & `signature` fields. |
-   * | `4` | `{ hash }` | `{ hash, inclusionState, tick, epoch }` or `{ hash, reason }` | Fetches status of a transfer. Rejects with reason in case account nonce has been overwritten. |
+   * | `4` | `{ hash }` | `{ hash, inclusionState, tick, epoch }` or `{ hash, reason }` | Fetches status of a transfer. Rejects with reason in case identity nonce has been overwritten. |
+   * | `5` | `{ hash }` | `{ hash, epoch, tick, data }` | Subscribes to an environment by its hash. |
+   * | `6` | `{ hash }` | `void` | Cancels environment subscription. |
    *
    * @function sendCommand
    * @memberof Connection
    * @param {number} command - Command index, must be an integer.
    * @param {object} payload - Payload.
-   * @returns {Promise<object|void>}
+   * @returns {Promise<object|void> | EventEmitter}
    */
   const sendCommand = function (command, payload) {
     return Promise.all(
@@ -198,19 +236,22 @@ export const createConnection = function ({
     ).then(function () {
       const key = command.toString() + (payload.identity || payload.hash);
       let responses = responsesByKey.get(key);
+      let emitter = emittersByEnvironment.get(payload.hash);
 
-      if (responses === undefined) {
+      if (responses === undefined && emitter === undefined) {
         const request = JSON.stringify({
           command,
           ...payload,
         });
 
-        if (command !== 3) {
+        if (command !== 3 && command !== 6) {
           responses = [];
-          responses.promise = new Promise(function (resolve, reject) {
-            responses.resolve = resolve;
-            responses.reject = reject;
-          });
+          if (command !== 5) {
+            responses.promise = new Promise(function (resolve, reject) {
+              responses.resolve = resolve;
+              responses.reject = reject;
+            });
+          }
           responsesByKey.set(key, responses);
           requestsByKey.set(key, request);
         }
@@ -220,6 +261,14 @@ export const createConnection = function ({
             socket.send(request);
           });
         });
+      }
+
+      if (command === 5) {
+        if (emitter === undefined) {
+          const emitter = new EventEmitter();
+          emittersByEnvironment.set(payload.hash, emitter);
+        }
+        return emitter;
       }
 
       if (responses !== undefined) {
