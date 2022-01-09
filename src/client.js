@@ -181,6 +181,7 @@ export const createClient = function ({
        * Subcribes to an environment.
        *
        * @function addEnvironmentListener
+       * @memberof Client
        * @param {string} environment - Environment hash.
        * @param {Function} listener
        *
@@ -207,6 +208,7 @@ export const createClient = function ({
        * Unsubscribes from an environment.
        *
        * @function removeEnvironmentListener
+       * @memberof Client
        * @param {string} environment - Environment hash.
        * @param {Function} listener
        */

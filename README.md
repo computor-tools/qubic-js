@@ -231,6 +231,8 @@ createTransfer({
     * _static_
         * [.identity](#Client.identity) : <code>string</code>
         * [.createTransfer(to)](#Client.createTransfer) ⇒ <code>object</code>
+        * [.addEnvironmentListener(environment, listener)](#Client.addEnvironmentListener)
+        * [.removeEnvironmentListener(environment, listener)](#Client.removeEnvironmentListener)
         * [.terminate([options])](#Client.terminate)
         * [.launch()](#Client.launch)
         * [.close()](#Client.close)
@@ -283,6 +285,41 @@ createTransfer({
 | to | <code>object</code> |  |
 | to.identity | <code>string</code> | Recipient identity in uppercase hex. |
 | to.energy | <code>bigint</code> | Transferred energy to recipient identity. |
+
+
+<br><a name="Client.addEnvironmentListener"></a>
+
+### Client.addEnvironmentListener(environment, listener)
+> Subcribes to an environment.
+
+
+| Param | Type | Description |
+| --- | --- | --- |
+| environment | <code>string</code> | Environment hash. |
+| listener | <code>function</code> |  |
+
+**Example**  
+```js
+const listener = function (data) {
+  console.log(data);
+};
+
+client.addEvironmentListener(
+  'BPFJANADOGBDLNNONDILEMAICAKMEEGBFPJBKPBCEDFJIALDONODMAIMDBFKCFEE',
+  listener
+);
+```
+
+<br><a name="Client.removeEnvironmentListener"></a>
+
+### Client.removeEnvironmentListener(environment, listener)
+> Unsubscribes from an environment.
+
+
+| Param | Type | Description |
+| --- | --- | --- |
+| environment | <code>string</code> | Environment hash. |
+| listener | <code>function</code> |  |
 
 
 <br><a name="Client.terminate"></a>
@@ -542,39 +579,4 @@ createTransfer({
 | output | <code>Uint8Array</code> |  | 
 | outputLength | <code>number</code> |  | 
 | outputOffset | <code>number</code> | <code>0</code> | 
-
-
-<br><a name="addEnvironmentListener"></a>
-
-## addEnvironmentListener(environment, listener)
-> Subcribes to an environment.
-
-
-| Param | Type | Description |
-| --- | --- | --- |
-| environment | <code>string</code> | Environment hash. |
-| listener | <code>function</code> |  |
-
-**Example**  
-```js
-const listener = function (data) {
-  console.log(data);
-};
-
-client.addEvironmentListener(
-  'BPFJANADOGBDLNNONDILEMAICAKMEEGBFPJBKPBCEDFJIALDONODMAIMDBFKCFEE',
-  listener
-);
-```
-
-<br><a name="removeEnvironmentListener"></a>
-
-## removeEnvironmentListener(environment, listener)
-> Unsubscribes from an environment.
-
-
-| Param | Type | Description |
-| --- | --- | --- |
-| environment | <code>string</code> | Environment hash. |
-| listener | <code>function</code> |  |
 
