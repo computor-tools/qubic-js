@@ -217,6 +217,7 @@ export const createClient = function ({
         if (emitter !== undefined) {
           connection.sendCommand(6, { hash: environment });
           emitter.removeListener(environment, listener);
+          emittersByEnvironment.delete(environment);
         }
       },
 

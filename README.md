@@ -236,7 +236,7 @@ createTransfer({
         * [.terminate([options])](#Client.terminate)
         * [.launch()](#Client.launch)
         * [.close()](#Client.close)
-        * [.sendCommand(command, payload)](#Client.sendCommand) ⇒ <code>Promise.&lt;(object\|void)&gt;</code> \| <code>EventEmitter</code>
+        * [.sendCommand(command, payload)](#Client.sendCommand) ⇒ <code>Promise.&lt;object&gt;</code> \| <code>EventEmitter</code> \| <code>void</code>
         * [.setComputorUrl(index, url)](#Client.setComputorUrl)
         * [.open()](#Client.open)
         * [.computors()](#Client.computors) ⇒ <code>Array.&lt;string&gt;</code>
@@ -350,25 +350,25 @@ client.addEvironmentListener(
 
 <br><a name="Client.sendCommand"></a>
 
-### Client.sendCommand(command, payload) ⇒ <code>Promise.&lt;(object\|void)&gt;</code> \| <code>EventEmitter</code>
+### Client.sendCommand(command, payload) ⇒ <code>Promise.&lt;object&gt;</code> \| <code>EventEmitter</code> \| <code>void</code>
 > Sends a client command to each connected computor, and compares responses before resolving.
 > Available client commands:
 > 
-> | Command | Payload | Response | Description |
+> | Command | Request | Response | Description |
 > | --- | --- | --- | --- |
 > | `1` | `{ identity }` | `{ identity, identityNonce }` | Fetches `identityNonce`. |
 > | `2` | `{ identity }` | `{ identity, energy }` | Fetches `energy`. |
 > | `3` | `{ message, signature }` | `void` | Sends a transfer with `base64`-encoded `message` & `signature` fields. |
 > | `4` | `{ hash }` | `{ hash, inclusionState, tick, epoch }` or `{ hash, reason }` | Fetches status of a transfer. Rejects with reason in case identity nonce has been overwritten. |
 > | `5` | `{ hash }` | `{ hash, epoch, tick, data }` | Subscribes to an environment by its hash. |
-> | `6` | `{ hash }` | `void` | Cancels environment subscription. |
+> | `6` | `{ hash }` | `{ hash }` | Cancels environment subscription. |
 
 **Mixes**: [<code>sendCommand</code>](#Connection.sendCommand)  
 
 | Param | Type | Description |
 | --- | --- | --- |
 | command | <code>number</code> | Command index, must be an integer. |
-| payload | <code>object</code> | Payload. |
+| payload | <code>object</code> | Request payload. |
 
 
 <br><a name="Client.setComputorUrl"></a>
@@ -410,7 +410,7 @@ client.addEvironmentListener(
         * ["close" (event)](#Connection+event_close)
     * _static_
         * [.close()](#Connection.close)
-        * [.sendCommand(command, payload)](#Connection.sendCommand) ⇒ <code>Promise.&lt;(object\|void)&gt;</code> \| <code>EventEmitter</code>
+        * [.sendCommand(command, payload)](#Connection.sendCommand) ⇒ <code>Promise.&lt;object&gt;</code> \| <code>EventEmitter</code> \| <code>void</code>
         * [.setComputorUrl(index, url)](#Connection.setComputorUrl)
         * [.open()](#Connection.open)
         * [.computors()](#Connection.computors) ⇒ <code>Array.&lt;string&gt;</code>
@@ -471,24 +471,24 @@ client.addEvironmentListener(
 
 <br><a name="Connection.sendCommand"></a>
 
-### Connection.sendCommand(command, payload) ⇒ <code>Promise.&lt;(object\|void)&gt;</code> \| <code>EventEmitter</code>
+### Connection.sendCommand(command, payload) ⇒ <code>Promise.&lt;object&gt;</code> \| <code>EventEmitter</code> \| <code>void</code>
 > Sends a client command to each connected computor, and compares responses before resolving.
 > Available client commands:
 > 
-> | Command | Payload | Response | Description |
+> | Command | Request | Response | Description |
 > | --- | --- | --- | --- |
 > | `1` | `{ identity }` | `{ identity, identityNonce }` | Fetches `identityNonce`. |
 > | `2` | `{ identity }` | `{ identity, energy }` | Fetches `energy`. |
 > | `3` | `{ message, signature }` | `void` | Sends a transfer with `base64`-encoded `message` & `signature` fields. |
 > | `4` | `{ hash }` | `{ hash, inclusionState, tick, epoch }` or `{ hash, reason }` | Fetches status of a transfer. Rejects with reason in case identity nonce has been overwritten. |
 > | `5` | `{ hash }` | `{ hash, epoch, tick, data }` | Subscribes to an environment by its hash. |
-> | `6` | `{ hash }` | `void` | Cancels environment subscription. |
+> | `6` | `{ hash }` | `{ hash }` | Cancels environment subscription. |
 
 
 | Param | Type | Description |
 | --- | --- | --- |
 | command | <code>number</code> | Command index, must be an integer. |
-| payload | <code>object</code> | Payload. |
+| payload | <code>object</code> | Request payload. |
 
 
 <br><a name="Connection.setComputorUrl"></a>

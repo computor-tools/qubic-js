@@ -213,68 +213,69 @@ export const createConnection = function ({
    * Sends a client command to each connected computor, and compares responses before resolving.
    * Available client commands:
    *
-   * | Command | Payload | Response | Description |
+   * | Command | Request | Response | Description |
    * | --- | --- | --- | --- |
    * | `1` | `{ identity }` | `{ identity, identityNonce }` | Fetches `identityNonce`. |
    * | `2` | `{ identity }` | `{ identity, energy }` | Fetches `energy`. |
    * | `3` | `{ message, signature }` | `void` | Sends a transfer with `base64`-encoded `message` & `signature` fields. |
    * | `4` | `{ hash }` | `{ hash, inclusionState, tick, epoch }` or `{ hash, reason }` | Fetches status of a transfer. Rejects with reason in case identity nonce has been overwritten. |
    * | `5` | `{ hash }` | `{ hash, epoch, tick, data }` | Subscribes to an environment by its hash. |
-   * | `6` | `{ hash }` | `void` | Cancels environment subscription. |
+   * | `6` | `{ hash }` | `{ hash }` | Cancels environment subscription. |
    *
    * @function sendCommand
    * @memberof Connection
    * @param {number} command - Command index, must be an integer.
-   * @param {object} payload - Payload.
-   * @returns {Promise<object|void> | EventEmitter}
+   * @param {object} payload - Request payload.
+   * @returns {Promise<object> | EventEmitter | void}
    */
   const sendCommand = function (command, payload) {
-    return Promise.all(
-      sockets.map(function (socket) {
-        return socket.open;
-      })
-    ).then(function () {
-      const key = command.toString() + (payload.identity || payload.hash);
-      let responses = responsesByKey.get(key);
-      let emitter = emittersByEnvironment.get(payload.hash);
+    const { identity, hash } = payload;
+    const key = command.toString() + (identity || hash);
+    let responses = responsesByKey.get(key);
+    let emitter = emittersByEnvironment.get(hash);
 
-      if (responses === undefined && emitter === undefined) {
-        const request = JSON.stringify({
-          command,
-          ...payload,
-        });
+    if (responses === undefined && emitter === undefined) {
+      const request = JSON.stringify({
+        command,
+        ...payload,
+      });
 
-        if (command !== 3 && command !== 6) {
-          responses = [];
-          if (command !== 5) {
-            responses.promise = new Promise(function (resolve, reject) {
-              responses.resolve = resolve;
-              responses.reject = reject;
-            });
-          }
-          responsesByKey.set(key, responses);
-          requestsByKey.set(key, request);
-        }
-
-        sockets.forEach(function (socket) {
-          return socket.open.then(function () {
-            socket.send(request);
+      if (command !== 3) {
+        responses = [];
+        if (command !== 5) {
+          responses.promise = new Promise(function (resolve, reject) {
+            responses.resolve = resolve;
+            responses.reject = reject;
           });
-        });
-      }
-
-      if (command === 5) {
-        if (emitter === undefined) {
-          const emitter = new EventEmitter();
-          emittersByEnvironment.set(payload.hash, emitter);
         }
-        return emitter;
+        responsesByKey.set(key, responses);
+        requestsByKey.set(key, request);
       }
 
-      if (responses !== undefined) {
-        return responses.promise;
+      sockets.forEach(function (socket) {
+        return socket.open.then(function () {
+          socket.send(request);
+        });
+      });
+    }
+
+    if (command === 5) {
+      if (emitter === undefined) {
+        const emitter = new EventEmitter();
+        emittersByEnvironment.set(hash, emitter);
       }
-    });
+      return emitter;
+    }
+
+    if (command === 6) {
+      responsesByKey.delete(5 + hash);
+      requestsByKey.delete(5 + hash);
+      emittersByEnvironment.delete(hash);
+    }
+
+    if (responses !== undefined) {
+      return responses.promise;
+    }
   };
 
   const connectionMixin = function () {
