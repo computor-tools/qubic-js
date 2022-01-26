@@ -77,6 +77,7 @@ export const createConnection = function ({
   const responsesByKey = new Map();
   const requestsByKey = new Map();
   const emittersByEnvironment = new Map();
+  const emittedTicks = new Map();
 
   const onopen = function (socket) {
     for (const request of requestsByKey.values()) {
@@ -135,8 +136,8 @@ export const createConnection = function ({
           return;
         }
 
-        const { hash, identity } = parsedMessage;
-        const key = command.toString() + (identity || hash);
+        const { messageDigest, environmentDigest, identity } = parsedMessage;
+        const key = command.toString() + (identity || messageDigest || environmentDigest);
         const responses = responsesByKey.get(key);
         if (responses !== undefined) {
           if (command === 5) {
@@ -150,27 +151,41 @@ export const createConnection = function ({
               responses[i].set(epoch, dataByTick);
             }
 
-            dataByTick.set(tick, data);
+            dataByTick.set(tick, { data, emitted: false });
 
             if (
               compareResponses(
-                responses.map(function (response) {
-                  return response.get(epoch)?.get(tick);
-                })
+                responses
+                  .map(function (response) {
+                    return response.get(epoch)?.get(tick);
+                  })
+                  .filter(function (data) {
+                    return data !== undefined;
+                  })
               ) >= 2
             ) {
-              responses.forEach(function (response) {
-                const dataByEpoch = response.get(epoch);
-                dataByEpoch.delete(tick);
-                if (dataByEpoch.size === 0) {
-                  response.delete(epoch);
-                }
-              });
-              emittersByEnvironment.get(hash).emit('data', {
+              if (
+                emittedTicks.get(epoch.toString() + tick.toString() + environmentDigest) === true
+              ) {
+                return;
+              }
+
+              emittedTicks.set(epoch.toString() + tick.toString() + environmentDigest, true);
+              emittersByEnvironment.get(environmentDigest).emit('data', {
+                environmentDigest,
                 epoch,
                 tick,
                 data,
               });
+              // responses.forEach(function (response) {
+              //   const dataByTick = response.get(epoch);
+              //   if (dataByTick !== undefined) {
+              //     dataByTick.delete(tick);
+              //     if (dataByTick.size === 0) {
+              //       response.delete(epoch);
+              //     }
+              //   }
+              // });
             }
           } else {
             responses[i] = message.data;
@@ -185,7 +200,7 @@ export const createConnection = function ({
             }
           }
         }
-      } catch {
+      } catch (error) {
         sockets[i].close();
       }
     };
@@ -218,9 +233,9 @@ export const createConnection = function ({
    * | `1` | `{ identity }` | `{ identity, identityNonce }` | Fetches `identityNonce`. |
    * | `2` | `{ identity }` | `{ identity, energy }` | Fetches `energy`. |
    * | `3` | `{ message, signature }` | `void` | Sends a transfer with `base64`-encoded `message` & `signature` fields. |
-   * | `4` | `{ hash }` | `{ hash, inclusionState, tick, epoch }` or `{ hash, reason }` | Fetches status of a transfer. Rejects with reason in case identity nonce has been overwritten. |
-   * | `5` | `{ hash }` | `{ hash, epoch, tick, data }` | Subscribes to an environment by its hash. |
-   * | `6` | `{ hash }` | `{ hash }` | Cancels environment subscription. |
+   * | `4` | `{ messageDigest }` | `{ messageDigest, inclusionState, tick, epoch }` or `{ messageDigest, reason }` | Fetches status of a transfer. Rejects with reason in case identity nonce has been overwritten. |
+   * | `5` | `{ environmentDigest }` | `{ environmentDigest, epoch, tick, data }` | Subscribes to an environment by its digest. |
+   * | `6` | `{ environmentDigest }` | `{ environmentDigest }` | Cancels environment subscription. |
    *
    * @function sendCommand
    * @memberof Connection
@@ -229,10 +244,10 @@ export const createConnection = function ({
    * @returns {Promise<object> | EventEmitter | void}
    */
   const sendCommand = function (command, payload) {
-    const { identity, hash } = payload;
-    const key = command.toString() + (identity || hash);
+    const { identity, messageDigest, environmentDigest } = payload;
+    const key = command.toString() + (identity || messageDigest || environmentDigest);
     let responses = responsesByKey.get(key);
-    let emitter = emittersByEnvironment.get(hash);
+    let emitter = emittersByEnvironment.get(environmentDigest);
 
     if (responses === undefined && emitter === undefined) {
       const request = JSON.stringify({
@@ -261,16 +276,16 @@ export const createConnection = function ({
 
     if (command === 5) {
       if (emitter === undefined) {
-        const emitter = new EventEmitter();
-        emittersByEnvironment.set(hash, emitter);
+        emitter = new EventEmitter();
+        emittersByEnvironment.set(environmentDigest, emitter);
       }
       return emitter;
     }
 
     if (command === 6) {
-      responsesByKey.delete(5 + hash);
-      requestsByKey.delete(5 + hash);
-      emittersByEnvironment.delete(hash);
+      responsesByKey.delete((5).toString() + environmentDigest);
+      requestsByKey.delete((5).toString() + environmentDigest);
+      emittersByEnvironment.delete(environmentDigest);
     }
 
     if (responses !== undefined) {

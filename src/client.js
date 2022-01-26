@@ -1,7 +1,7 @@
 'use strict';
 
 import { createConnection } from './connection.js';
-import { createTransfer } from './transfer.js';
+import { transaction } from './transaction.js';
 import { createIdentity } from './identity.js';
 import level from 'level';
 import path from 'path';
@@ -85,10 +85,10 @@ export const createClient = function ({
   const clientMixin = function () {
     const that = this;
 
-    const onTransfer = function (key) {
+    const onTransaction = function (key) {
       const infoListener = async function ({ syncStatus }) {
         if (syncStatus > 2) {
-          const response = await connection.sendCommand(4, { hash: key });
+          const response = await connection.sendCommand(4, { messageDigest: key });
           if (response.inclusionState === true) {
             (await db).del(key).then(function () {
               that.removeListener('info', infoListener);
@@ -97,12 +97,12 @@ export const createClient = function ({
                *
                * @event Client#inclusion
                * @type {object}
-               * @property {string} hash - Hash of included transfer in uppercase hex.
+               * @property {string} messageDigest - Hash of included transfer in uppercase hex.
                * @property {number} epoch - Epoch at which transfer was included.
                * @property {number} tick - Tick at which transfer was included.
                */
               that.emit('inclusion', {
-                hash: key,
+                messageDigest: key,
                 inclusionState: true,
                 tick: response.tick,
                 epoch: response.epoch,
@@ -114,10 +114,10 @@ export const createClient = function ({
              *
              * @event Client#rejection
              * @type {object}
-             * @property {string} hash - Hash of rejected transfer in uppercase hex.
+             * @property {string} messageDigest - Hash of rejected transfer in uppercase hex.
              * @property {string} reason - Reason of rejection.
              */
-            that.emit('rejection', { hash: key, reason: response.reason });
+            that.emit('rejection', { messageDigest: key, reason: response.reason });
           }
         }
       };
@@ -126,8 +126,8 @@ export const createClient = function ({
     };
 
     db.then(function (db) {
-      db.on('put', onTransfer);
-      db.createKeyStream().on('data', onTransfer);
+      db.on('put', onTransaction);
+      db.createKeyStream().on('data', onTransaction);
     });
 
     /**
@@ -143,38 +143,54 @@ export const createClient = function ({
         return identity;
       },
 
+      /* eslint-disable jsdoc/no-undefined-types */
       /**
-       * @function createTransfer
+       * Sends energy to recipient.
+       *
+       * @function energyTransfer
        * @memberof Client
-       * @param {object} to
-       * @param {string} to.identity - Recipient identity in uppercase hex.
-       * @param {bigint} to.energy - Transferred energy to recipient identity.
-       * @returns {object} Transfer object.
+       * @param {object} params
+       * @param {string} params.recipientIdentity - Recipient identity in uppercase hex.
+       * @param {bigint} params.energy - Transferred energy to recipient identity.
+       * @param {TypedArray} params.effectPayload - Effect payload.
+       * @returns {Transaction} Transaction object.
        */
-      async createTransfer(to) {
+      /* eslint-enable jsdoc/no-undefined-types */
+      async transaction(params) {
         const [{ identityNonce }, { energy }] = await Promise.all([
           connection.sendCommand(1, { identity: await identity }),
-          connection.sendCommand(2, { identity: await identity }),
+          params.recipientIdentity
+            ? connection.sendCommand(2, { identity: await identity })
+            : { energy: undefined },
         ]);
 
-        const transfer = await createTransfer({
+        if (energy !== undefined && bigInt(energy).lesser(params.energy)) {
+          throw new Error('Insufficient energy.');
+        }
+
+        const { messageDigest, message, signature } = await transaction({
           seed,
-          from: {
-            identity: await identity,
-            index,
-            identityNonce,
-            energy: bigInt(energy),
-          },
-          to,
+          index,
+          senderIdentity: await identity,
+          identityNonce,
+          energy: params.energy,
+          recipientIdentity: params.recipientIdentity,
+          effectPayload: params.effectPayload,
         });
 
-        return (await db).put(transfer.hash, JSON.stringify(transfer)).then(function () {
-          connection.sendCommand(3, {
-            message: transfer.message,
-            signature: transfer.signature,
+        return (await db)
+          .put(messageDigest, JSON.stringify({ message, signature }))
+          .then(function () {
+            connection.sendCommand(3, {
+              message,
+              signature,
+            });
+            return {
+              messageDigest,
+              message,
+              signature,
+            };
           });
-          return transfer;
-        });
       },
 
       /**
@@ -198,7 +214,7 @@ export const createClient = function ({
       addEnvironmentListener(environment, listener) {
         let emitter = emittersByEnvironment.get(environment);
         if (emitter === undefined) {
-          emitter = connection.sendCommand(5, { hash: environment });
+          emitter = connection.sendCommand(5, { environmentDigest: environment });
           emittersByEnvironment.set(environment, emitter);
         }
         emitter.addListener('data', listener);
@@ -215,8 +231,8 @@ export const createClient = function ({
       removeEnvironmentListener(environment, listener) {
         let emitter = emittersByEnvironment.get(environment);
         if (emitter !== undefined) {
-          connection.sendCommand(6, { hash: environment });
-          emitter.removeListener(environment, listener);
+          connection.sendCommand(6, { environmentDigest: environment });
+          emitter.removeListener('data', listener);
           emittersByEnvironment.delete(environment);
         }
       },
@@ -254,8 +270,8 @@ export const createClient = function ({
       async launch() {
         connection.open();
         (await db).open();
-        (await db).on('put', onTransfer);
-        (await db).createKeyStream().on('data', onTransfer);
+        (await db).on('put', onTransaction);
+        (await db).createKeyStream().on('data', onTransaction);
       },
     });
   };

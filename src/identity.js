@@ -119,3 +119,37 @@ export const seedChecksum = function (seed) {
       .toUpperCase();
   });
 };
+
+// const sA = 'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabc';
+// const sB = 'cbazyxwvutsrqponmlkjihgfedcbazyxwvutsrqponmlkjihgfedcba';
+
+// crypto.then(function ({ K12, kex, schnorrq }) {
+//   const skA = privateKey(sA, 0, K12);
+//   const skB = privateKey(sB, 0, K12);
+
+//   console.log('seed of Alice:', sA);
+//   console.log('seed of Bob:', sB);
+
+//   console.log('private key of Alice:', skA);
+
+//   createIdentity(sA, 0).then(function (idA) {
+//     console.log('identity of Alice:', idA);
+
+//     const hSkB = new Uint8Array(64);
+//     K12(skB, hSkB, 64);
+//     const shk = kex.compressedSecretAgreement(hSkB, schnorrq.generatePublicKey(skA));
+//     console.log('shared secret:', shk);
+
+//     const hSkA = new Uint8Array(64);
+//     K12(skA, hSkA, 64);
+//     const shk2 = kex.compressedSecretAgreement(hSkA, schnorrq.generatePublicKey(skB));
+//     console.log(shk2);
+
+//     const message = Buffer.from('z'.repeat(135));
+
+//     console.log(
+//       'signature of Alice:',
+//       schnorrq.sign(skA, schnorrq.generatePublicKey(skA), Uint8Array.from(message))
+//     );
+//   });
+// });

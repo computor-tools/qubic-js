@@ -1,17 +1,3 @@
-<pre>
-                             ______
-                            |_|_*|_|
- ____________________   ____|_|  |_|__________________________
-|_|_*|_|_|_|__|_|_*|_| |*|_*|_|  |_|_|_|_*|_|_*|_|_*|_|_|_|_|_|
-|_|   _____   |_|  |_| |*|  |_|   _____   |_|  |_|   _______|_|
-|_|  |_|_|*|  |_|  |_| |*|  |_|  |_|_|*|  |_|  |_|  |*|*|*|_|_|
-|_|  |_|_|*|  |_|  |_|_|*|  |_|  |_|_|*|  |_|  |_|  |*|_______
-|_|  |_|_|_|  |_|  |_|_|_|  |_|  |_|_|_|  |_|  |_|  |_|_|_|_|_|
-|_|________   |_|___________|_|___________|_|__|_|__________|_|
-|_|_*|_|_|*|  |_|_*|_|_|_|_*|_|_*|_|_|_|_*|_|_*|_|_*|_|_|_|_|_|
-         |*|__|_|
-         |*|__|_|
-</pre>
 # qubic-js
 Qubic client library.
 This is work in progress.
@@ -30,6 +16,12 @@ With `npm`:
 npm i qubic-js
 ```
 
+## Include in your project
+```JS
+import * as qubic from 'qubic-js';
+```
+
+
 <br><a name="module_qubic"></a>
 
 ## qubic
@@ -42,7 +34,7 @@ npm i qubic-js
     * [.createIdentity(seed, index)](#module_qubic.createIdentity) ⇒ <code>Promise.&lt;string&gt;</code>
     * [.verifyChecksum(identity)](#module_qubic.verifyChecksum) ⇒ <code>Promise.&lt;boolean&gt;</code>
     * [.seedChecksum(seed)](#module_qubic.seedChecksum) ⇒ <code>Promise.&lt;string&gt;</code>
-    * [.createTransfer(params)](#module_qubic.createTransfer) ⇒ <code>Promise.&lt;object&gt;</code>
+    * [.transaction(params)](#module_qubic.transaction) ⇒ [<code>Promise.&lt;Transaction&gt;</code>](#Transaction)
 
 
 <br><a name="module_qubic.exports.crypto"></a>
@@ -175,44 +167,33 @@ connection.addListener('info', console.log);
 | seed | <code>string</code> | Seed in 55 lowercase latin chars. |
 
 
-<br><a name="module_qubic.createTransfer"></a>
+<br><a name="module_qubic.transaction"></a>
 
-### qubic.createTransfer(params) ⇒ <code>Promise.&lt;object&gt;</code>
-> Creates a transfer of energy between 2 entities.
+### qubic.transaction(params) ⇒ [<code>Promise.&lt;Transaction&gt;</code>](#Transaction)
+> Creates a transaction which includes a transfer of energy between 2 entities,
+> or an effect, or both. Transaction is atomic, meaaning that both transfer and
+> effect will be proccessed or none.
 
 
-| Param | Type | Description |
-| --- | --- | --- |
-| params | <code>object</code> |  |
-| params.seed | <code>string</code> | Seed in 55 lowercase latin chars. |
-| params.from | <code>object</code> |  |
-| params.from.identity | <code>string</code> | Sender identity in uppercase hex. |
-| params.from.index | <code>number</code> | Index of private key which was used to derive sender identity. |
-| params.from.identityNonce | <code>number</code> | Identity nonce. |
-| params.from.enery | <code>bigint</code> | Energy of sender identity. |
-| params.to | <code>object</code> |  |
-| params.to.identity | <code>string</code> | Recipient identity in uppercase hex. |
-| params.to.energy | <code>bigint</code> | Transferred energy to recipient identity. |
+| Param | Type |
+| --- | --- |
+| params | [<code>TransferParams</code>](#TransferParams), [<code>EffectParams</code>](#EffectParams), [<code>TransferAndEffectParams</code>](#TransferAndEffectParams) | 
 
 **Example**  
 ```js
-import { createTransfer } from 'qubic-js';
+import qubic from 'qubic-js';
 
-createTransfer({
-  seed: 'vmscmtbcqjbqyqcckegsfdsrcgjpeejobolmimgorsqwgupzhkevreu',
-  from: {
-    identity: '9F6ADD0C591DBB8C0CE1EDF6F63A9E1C7BD22CFBD20DE1469ADAA76A9C0023707BE416',
+qubic
+  .transaction({
+    seed: 'vmscmtbcqjbqyqcckegsfdsrcgjpeejobolmimgorsqwgupzhkevreu',
+    senderIdentity: 'DCMJGMELMPBOJCCOFAICMJCBKENNOPEJCLIPBKKKDKLDOMKFBPOFHFLGAHLNAFMKMHHOAE',
     index: 1337,
     identityNonce: 0,
-    energy: bigInt(2),
-  },
-  to: {
-    identity: 'CD5B4A78521A9F9428F442E60E25DA63247817AB6BBF406CC91393F6664E38CBFE68DC',
-    energy: bigInt(1),
-  },
-})
-  .then(function (transfer) {
-    console.log(transfer);
+    recipientIdentity: 'BPFJANADOGBDLNNONDILEMAICAKMEEGBFPJBKPBCEDFJIALDONODMAIMDBFKCFEEMEOLFK',
+    energy: qubic.energy(1),
+  })
+  .then(function (transaction) {
+    console.log(transaction);
   })
   .catch(function (error) {
     console.log(error.message);
@@ -230,7 +211,7 @@ createTransfer({
         * ["rejection"](#Client+event_rejection)
     * _static_
         * [.identity](#Client.identity) : <code>string</code>
-        * [.createTransfer(to)](#Client.createTransfer) ⇒ <code>object</code>
+        * [.energyTransfer(params)](#Client.energyTransfer) ⇒ [<code>Transaction</code>](#Transaction)
         * [.addEnvironmentListener(environment, listener)](#Client.addEnvironmentListener)
         * [.removeEnvironmentListener(environment, listener)](#Client.removeEnvironmentListener)
         * [.terminate([options])](#Client.terminate)
@@ -251,7 +232,7 @@ createTransfer({
 
 | Name | Type | Description |
 | --- | --- | --- |
-| hash | <code>string</code> | Hash of included transfer in uppercase hex. |
+| messageDigest | <code>string</code> | Hash of included transfer in uppercase hex. |
 | epoch | <code>number</code> | Epoch at which transfer was included. |
 | tick | <code>number</code> | Tick at which transfer was included. |
 
@@ -265,7 +246,7 @@ createTransfer({
 
 | Name | Type | Description |
 | --- | --- | --- |
-| hash | <code>string</code> | Hash of rejected transfer in uppercase hex. |
+| messageDigest | <code>string</code> | Hash of rejected transfer in uppercase hex. |
 | reason | <code>string</code> | Reason of rejection. |
 
 
@@ -275,16 +256,19 @@ createTransfer({
 > Client identity in uppercase hex.
 
 
-<br><a name="Client.createTransfer"></a>
+<br><a name="Client.energyTransfer"></a>
 
-### Client.createTransfer(to) ⇒ <code>object</code>
-**Returns**: <code>object</code> - Transfer object.  
+### Client.energyTransfer(params) ⇒ [<code>Transaction</code>](#Transaction)
+> Sends energy to recipient.
+
+**Returns**: [<code>Transaction</code>](#Transaction) - Transaction object.  
 
 | Param | Type | Description |
 | --- | --- | --- |
-| to | <code>object</code> |  |
-| to.identity | <code>string</code> | Recipient identity in uppercase hex. |
-| to.energy | <code>bigint</code> | Transferred energy to recipient identity. |
+| params | <code>object</code> |  |
+| params.recipientIdentity | <code>string</code> | Recipient identity in uppercase hex. |
+| params.energy | <code>bigint</code> | Transferred energy to recipient identity. |
+| params.effectPayload | <code>TypedArray</code> | Effect payload. |
 
 
 <br><a name="Client.addEnvironmentListener"></a>
@@ -359,9 +343,9 @@ client.addEvironmentListener(
 > | `1` | `{ identity }` | `{ identity, identityNonce }` | Fetches `identityNonce`. |
 > | `2` | `{ identity }` | `{ identity, energy }` | Fetches `energy`. |
 > | `3` | `{ message, signature }` | `void` | Sends a transfer with `base64`-encoded `message` & `signature` fields. |
-> | `4` | `{ hash }` | `{ hash, inclusionState, tick, epoch }` or `{ hash, reason }` | Fetches status of a transfer. Rejects with reason in case identity nonce has been overwritten. |
-> | `5` | `{ hash }` | `{ hash, epoch, tick, data }` | Subscribes to an environment by its hash. |
-> | `6` | `{ hash }` | `{ hash }` | Cancels environment subscription. |
+> | `4` | `{ messageDigest }` | `{ messageDigest, inclusionState, tick, epoch }` or `{ messageDigest, reason }` | Fetches status of a transfer. Rejects with reason in case identity nonce has been overwritten. |
+> | `5` | `{ environmentDigest }` | `{ environmentDigest, epoch, tick, data }` | Subscribes to an environment by its digest. |
+> | `6` | `{ environmentDigest }` | `{ environmentDigest }` | Cancels environment subscription. |
 
 **Mixes**: [<code>sendCommand</code>](#Connection.sendCommand)  
 
@@ -480,9 +464,9 @@ client.addEvironmentListener(
 > | `1` | `{ identity }` | `{ identity, identityNonce }` | Fetches `identityNonce`. |
 > | `2` | `{ identity }` | `{ identity, energy }` | Fetches `energy`. |
 > | `3` | `{ message, signature }` | `void` | Sends a transfer with `base64`-encoded `message` & `signature` fields. |
-> | `4` | `{ hash }` | `{ hash, inclusionState, tick, epoch }` or `{ hash, reason }` | Fetches status of a transfer. Rejects with reason in case identity nonce has been overwritten. |
-> | `5` | `{ hash }` | `{ hash, epoch, tick, data }` | Subscribes to an environment by its hash. |
-> | `6` | `{ hash }` | `{ hash }` | Cancels environment subscription. |
+> | `4` | `{ messageDigest }` | `{ messageDigest, inclusionState, tick, epoch }` or `{ messageDigest, reason }` | Fetches status of a transfer. Rejects with reason in case identity nonce has been overwritten. |
+> | `5` | `{ environmentDigest }` | `{ environmentDigest, epoch, tick, data }` | Subscribes to an environment by its digest. |
+> | `6` | `{ environmentDigest }` | `{ environmentDigest }` | Cancels environment subscription. |
 
 
 | Param | Type | Description |
@@ -524,6 +508,9 @@ client.addEvironmentListener(
         * [.generatePublicKey(secretKey)](#Crypto.schnorrq.generatePublicKey) ⇒ <code>Uint8Array</code>
         * [.sign(secretKey, publicKey, message)](#Crypto.schnorrq.sign) ⇒ <code>Uint8Array</code>
         * [.verify(publicKey, message, signature)](#Crypto.schnorrq.verify) ⇒ <code>number</code>
+    * [.kex](#Crypto.kex) : <code>object</code>
+        * [.generateCompressedPublicKey(secretKey)](#Crypto.kex.generateCompressedPublicKey) ⇒ <code>Uint8Array</code>
+        * [.compressedSecretAgreement(secretKey, publicKey)](#Crypto.kex.compressedSecretAgreement) ⇒ <code>Uint8Array</code>
     * [.K12(input, output, outputLength, outputOffset)](#Crypto.K12)
 
 
@@ -569,6 +556,36 @@ client.addEvironmentListener(
 | signature | <code>Uint8Array</code> | 
 
 
+<br><a name="Crypto.kex"></a>
+
+### Crypto.kex : <code>object</code>
+
+* [.kex](#Crypto.kex) : <code>object</code>
+    * [.generateCompressedPublicKey(secretKey)](#Crypto.kex.generateCompressedPublicKey) ⇒ <code>Uint8Array</code>
+    * [.compressedSecretAgreement(secretKey, publicKey)](#Crypto.kex.compressedSecretAgreement) ⇒ <code>Uint8Array</code>
+
+
+<br><a name="Crypto.kex.generateCompressedPublicKey"></a>
+
+#### kex.generateCompressedPublicKey(secretKey) ⇒ <code>Uint8Array</code>
+**Returns**: <code>Uint8Array</code> - Public key  
+
+| Param | Type |
+| --- | --- |
+| secretKey | <code>Uint8Array</code> | 
+
+
+<br><a name="Crypto.kex.compressedSecretAgreement"></a>
+
+#### kex.compressedSecretAgreement(secretKey, publicKey) ⇒ <code>Uint8Array</code>
+**Returns**: <code>Uint8Array</code> - Shared key  
+
+| Param | Type |
+| --- | --- |
+| secretKey | <code>Uint8Array</code> | 
+| publicKey | <code>Uint8Array</code> | 
+
+
 <br><a name="Crypto.K12"></a>
 
 ### Crypto.K12(input, output, outputLength, outputOffset)
@@ -579,4 +596,61 @@ client.addEvironmentListener(
 | output | <code>Uint8Array</code> |  | 
 | outputLength | <code>number</code> |  | 
 | outputOffset | <code>number</code> | <code>0</code> | 
+
+
+<br><a name="TransferParams"></a>
+
+## TransferParams : <code>object</code>
+**Properties**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| seed | <code>string</code> | Seed in 55 lowercase latin chars. |
+| index | <code>number</code> | Index of private key which was used to derive sender identity. |
+| senderIdentity | <code>string</code> | Sender identity in uppercase hex. |
+| identityNonce | <code>number</code> | Identity nonce. |
+| energy | <code>bigint</code> | Transferred energy to recipient identity. |
+| recipientIdentity | <code>string</code> | Recipient identity in uppercase hex. |
+
+
+<br><a name="EffectParams"></a>
+
+## EffectParams : <code>object</code>
+**Properties**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| seed | <code>string</code> | Seed in 55 lowercase latin chars. |
+| index | <code>number</code> | Index of private key which was used to derive sender identity. |
+| senderIdentity | <code>string</code> | Sender identity in uppercase hex. |
+| identityNonce | <code>number</code> | Identity nonce. |
+| effectPayload | <code>TypedArray</code> | Effect payload |
+
+
+<br><a name="TransferAndEffectParams"></a>
+
+## TransferAndEffectParams : <code>object</code>
+**Properties**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| seed | <code>string</code> | Seed in 55 lowercase latin chars. |
+| index | <code>number</code> | Index of private key which was used to derive sender identity. |
+| senderIdentity | <code>string</code> | Sender identity in shifted uppercase hex. |
+| identityNonce | <code>number</code> | Identity nonce. |
+| energy | <code>bigint</code> | Transferred energy to recipient identity. |
+| recipientIdentity | <code>string</code> | Recipient identity in shifted uppercase hex. |
+| effectPayload | <code>TypedArray</code> | Effect payload |
+
+
+<br><a name="Transaction"></a>
+
+## Transaction : <code>object</code>
+**Properties**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| hash | <code>string</code> | Transaction hash in shifted uppercase hex. |
+| message | <code>string</code> | Base64-encoded signed message. |
+| signature | <code>string</code> | Base64-encoded signature. |
 

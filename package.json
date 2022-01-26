@@ -16,6 +16,7 @@
   },
   "author": "Chris Dukakis <chrisdukakis@gmail.com>",
   "dependencies": {
+    "aes-js": "^3.1.2",
     "big-integer": "^1.6.50",
     "eventemitter2": "^6.4.5",
     "isomorphic-ws": "^4.0.1",
