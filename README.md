@@ -28,10 +28,10 @@ import * as qubic from 'qubic-js';
 
 * [qubic](#module_qubic)
     * [.exports.crypto](#module_qubic.exports.crypto) : [<code>Promise.&lt;Crypto&gt;</code>](#Crypto)
-    * [.createClient(options)](#module_qubic.createClient) ⇒ [<code>Client</code>](#Client)
-    * [.createConnection(params)](#module_qubic.createConnection) ⇒ [<code>Connection</code>](#Connection)
+    * [.client(options)](#module_qubic.client) ⇒ [<code>Client</code>](#Client)
+    * [.connection(params)](#module_qubic.connection) ⇒ [<code>Connection</code>](#Connection)
     * [.privateKey(seed, index, K12)](#module_qubic.privateKey) ⇒ <code>Uint8Array</code>
-    * [.createIdentity(seed, index)](#module_qubic.createIdentity) ⇒ <code>Promise.&lt;string&gt;</code>
+    * [.identity(seed, index)](#module_qubic.identity) ⇒ <code>Promise.&lt;string&gt;</code>
     * [.verifyChecksum(identity)](#module_qubic.verifyChecksum) ⇒ <code>Promise.&lt;boolean&gt;</code>
     * [.seedChecksum(seed)](#module_qubic.seedChecksum) ⇒ <code>Promise.&lt;string&gt;</code>
     * [.transaction(params)](#module_qubic.transaction) ⇒ [<code>Promise.&lt;Transaction&gt;</code>](#Transaction)
@@ -43,9 +43,9 @@ import * as qubic from 'qubic-js';
 > A promise which always resolves to object with crypto functions.
 
 
-<br><a name="module_qubic.createClient"></a>
+<br><a name="module_qubic.client"></a>
 
-### qubic.createClient(options) ⇒ [<code>Client</code>](#Client)
+### qubic.client(options) ⇒ [<code>Client</code>](#Client)
 **Emits**: [<code>info</code>](#Connection+event_info), [<code>open</code>](#Connection+event_open), [<code>close</code>](#Connection+event_close), [<code>error</code>](#Connection+event_error), [<code>inclusion</code>](#Client+event_inclusion), [<code>rejection</code>](#Client+event_rejection)  
 
 | Param | Type | Default | Description |
@@ -65,9 +65,9 @@ import * as qubic from 'qubic-js';
 
 **Example**  
 ```js
-import { createClient } from 'qubic-js';
+import qubic from 'qubic-js';
 
-const client = createClient({
+const client = qubic.client({
   seed: 'vmscmtbcqjbqyqcckegsfdsrcgjpeejobolmimgorsqwgupzhkevreu',
   computors: [
     { url: 'wss://AA.computor.com' },
@@ -84,9 +84,9 @@ client.addListener('error', function (error) {
 client.addListener('info', console.log);
 ```
 
-<br><a name="module_qubic.createConnection"></a>
+<br><a name="module_qubic.connection"></a>
 
-### qubic.createConnection(params) ⇒ [<code>Connection</code>](#Connection)
+### qubic.connection(params) ⇒ [<code>Connection</code>](#Connection)
 **Emits**: [<code>info</code>](#Connection+event_info), [<code>open</code>](#Connection+event_open), [<code>close</code>](#Connection+event_close), [<code>error</code>](#Connection+event_error)  
 
 | Param | Type | Default | Description |
@@ -101,9 +101,9 @@ client.addListener('info', console.log);
 
 **Example**  
 ```js
-import { createConnection } from 'qubic-js';
+import qubic from 'qubic-js';
 
-const connection = createConnection({
+const connection = qubic.connection({
   computors: [
     { url: 'wss://AA.computor.com' },
     { url: 'wss://AB.computor.com' },
@@ -133,9 +133,9 @@ connection.addListener('info', console.log);
 | K12 | [<code>K12</code>](#Crypto.K12) | K12 function. |
 
 
-<br><a name="module_qubic.createIdentity"></a>
+<br><a name="module_qubic.identity"></a>
 
-### qubic.createIdentity(seed, index) ⇒ <code>Promise.&lt;string&gt;</code>
+### qubic.identity(seed, index) ⇒ <code>Promise.&lt;string&gt;</code>
 > Creates an identity with checksum.
 
 **Returns**: <code>Promise.&lt;string&gt;</code> - Identity with checksum in uppercase hex.  
@@ -211,7 +211,7 @@ qubic
         * ["rejection"](#Client+event_rejection)
     * _static_
         * [.identity](#Client.identity) : <code>string</code>
-        * [.energyTransfer(params)](#Client.energyTransfer) ⇒ [<code>Transaction</code>](#Transaction)
+        * [.transaction(params)](#Client.transaction) ⇒ [<code>Transaction</code>](#Transaction)
         * [.addEnvironmentListener(environment, listener)](#Client.addEnvironmentListener)
         * [.removeEnvironmentListener(environment, listener)](#Client.removeEnvironmentListener)
         * [.terminate([options])](#Client.terminate)
@@ -256,9 +256,9 @@ qubic
 > Client identity in uppercase hex.
 
 
-<br><a name="Client.energyTransfer"></a>
+<br><a name="Client.transaction"></a>
 
-### Client.energyTransfer(params) ⇒ [<code>Transaction</code>](#Transaction)
+### Client.transaction(params) ⇒ [<code>Transaction</code>](#Transaction)
 > Sends energy to recipient.
 
 **Returns**: [<code>Transaction</code>](#Transaction) - Transaction object.  
@@ -624,7 +624,7 @@ client.addEvironmentListener(
 | index | <code>number</code> | Index of private key which was used to derive sender identity. |
 | senderIdentity | <code>string</code> | Sender identity in uppercase hex. |
 | identityNonce | <code>number</code> | Identity nonce. |
-| effectPayload | <code>TypedArray</code> | Effect payload |
+| effectPayload | <code>Uint8Array</code> | Effect payload |
 
 
 <br><a name="TransferAndEffectParams"></a>
@@ -640,7 +640,7 @@ client.addEvironmentListener(
 | identityNonce | <code>number</code> | Identity nonce. |
 | energy | <code>bigint</code> | Transferred energy to recipient identity. |
 | recipientIdentity | <code>string</code> | Recipient identity in shifted uppercase hex. |
-| effectPayload | <code>TypedArray</code> | Effect payload |
+| effectPayload | <code>Uint8Array</code> | Effect payload |
 
 
 <br><a name="Transaction"></a>

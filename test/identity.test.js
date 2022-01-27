@@ -1,7 +1,7 @@
 'use strict';
 
 import {
-  createIdentity,
+  identity,
   verifyChecksum,
   seedChecksum,
   SEED_IN_LOWERCASE_LATIN_LENGTH,
@@ -12,7 +12,7 @@ describe('createIdentity', function () {
   assert({
     given: 'seed & index',
     should: 'resolve with correct identity',
-    awaitActual: createIdentity('vmscmtbcqjbqyqcckegsfdsrcgjpeejobolmimgorsqwgupzhkevreu', 1337),
+    awaitActual: identity('vmscmtbcqjbqyqcckegsfdsrcgjpeejobolmimgorsqwgupzhkevreu', 1337),
     expected: 'DCMJGMELMPBOJCCOFAICMJCBKENNOPEJCLIPBKKKDKLDOMKFBPOFHFLGAHLNAFMKMHHOAE',
   });
 
@@ -20,7 +20,7 @@ describe('createIdentity', function () {
     given: 'invalid seed',
     should: 'reject with correct error',
     awaitActual: toString(
-      Try(createIdentity, 'vmscmtbcqjbqyqcckegsfdsrcgjpeejobolmimgorsqwgupzhkevre', 0)
+      Try(identity, 'vmscmtbcqjbqyqcckegsfdsrcgjpeejobolmimgorsqwgupzhkevre', 0)
     ),
     expected: 'Error: Invalid seed. Must be 55 lowercase latin chars.',
   });
@@ -29,7 +29,7 @@ describe('createIdentity', function () {
     given: 'illegal index',
     should: 'reject with correct error',
     awaitActual: toString(
-      Try(createIdentity, 'vmscmtbcqjbqyqcckegsfdsrcgjpeejobolmimgorsqwgupzhkevreu', '1')
+      Try(identity, 'vmscmtbcqjbqyqcckegsfdsrcgjpeejobolmimgorsqwgupzhkevreu', '1')
     ),
     expected: 'Error: Illegal index.',
   });
@@ -38,7 +38,7 @@ describe('createIdentity', function () {
     given: 'illegal index (negative)',
     should: 'reject with correct error',
     awaitActual: toString(
-      Try(createIdentity, 'vmscmtbcqjbqyqcckegsfdsrcgjpeejobolmimgorsqwgupzhkevreu', -1)
+      Try(identity, 'vmscmtbcqjbqyqcckegsfdsrcgjpeejobolmimgorsqwgupzhkevreu', -1)
     ),
     expected: 'Error: Illegal index.',
   });

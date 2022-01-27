@@ -1,14 +1,15 @@
 'use strict';
 
 import { WebSocketServer } from 'isomorphic-ws';
-import { crypto } from '../src/crypto/index.js';
-import { createClient } from '../src/client.js';
 import { bytesToShiftedHex } from '../src/utils/hex.js';
+import qubic from '../src/index.js';
 import { EPOCH_LENGTH, EPOCH_OFFSET, TICK_LENGTH, TICK_OFFSET } from '../src/connection.js';
 import bigInt from 'big-integer';
 import getPort from 'get-port';
 import rimraf from 'rimraf';
 import { toString } from './utils';
+
+const { crypto } = qubic;
 
 jest.setTimeout(5 * 1000);
 
@@ -248,7 +249,7 @@ const closeServers = function (servers) {
 };
 
 describe('client.computors', function () {
-  const client = createClient({
+  const client = qubic.client({
     seed,
     index: 8000,
     computors: [
@@ -281,7 +282,7 @@ describe('client.on("info", callback) (2 of 3)', function () {
         servers[1].on('connection', onconnectionSendStatus(1, 2));
         servers[2].on('connection', onconnectionSendStatus(1, 1));
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           computors: [
             { url: 'ws://localhost:' + ports[0].toString() },
@@ -326,7 +327,7 @@ describe('client.on("info", callback) (3 of 3)', function () {
         servers[1].on('connection', onconnectionSendStatus(1, 2));
         servers[2].on('connection', onconnectionSendStatus(1, 2));
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 1,
           computors: [
@@ -373,7 +374,7 @@ describe('client.on("info", callback) (3 of 3 with 2 rounds)', function () {
         servers[1].on('connection', onconnectionSendStatus2(1, 2, 1, 3));
         servers[2].on('connection', onconnectionSendStatus2(1, 2, 1, 3));
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 2,
           computors: [
@@ -424,7 +425,7 @@ describe('client.on("info", callback) (2 of 3 with 1 invalid signature)', functi
         servers[1].on('connection', onconnectionSendStatus(1, 2));
         servers[2].on('connection', onconnectionSendStatus(1, 2));
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 3,
           computors: [
@@ -471,7 +472,7 @@ describe('client.on("info", callback) (1 of 3)', function () {
         servers[1].on('connection', onconnectionSendStatus(1, 1));
         servers[2].on('connection', onconnectionSendStatus(1, 0));
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 4,
           computors: [
@@ -515,7 +516,7 @@ describe('client.on("info", callback) (inactive)', function () {
         servers[1].on('connection', onconnectionSendStatus(1, 2));
         servers[2].on('connection', onconnectionSendStatus(1, 2));
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 5,
           computors: [
@@ -564,7 +565,7 @@ describe('client.sendCommand - 1 = fetch identityNonce (2 of 3)', function () {
         servers[1].on('connection', onconnection(true));
         servers[2].on('connection', onconnection());
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 6,
           computors: [
@@ -599,7 +600,7 @@ describe('client.sendCommand - 1 = fetch identityNonce (1 of 3)', function () {
         servers[1].on('connection', onconnection(1));
         servers[2].on('connection', onconnection(2));
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 7,
           computors: [
@@ -641,7 +642,7 @@ describe('client.sendCommand - 1 = fetch identityNonce (2 of 3 with reconnect)',
         .then(function ({ servers, ports }) {
           servers[0].on('connection', onconnection());
 
-          const client = createClient({
+          const client = qubic.client({
             seed,
             index: 8,
             computors: [
@@ -683,7 +684,7 @@ describe('client.sendCommand - 1 = fetch identityNonce (2 of 3 with double call)
         servers[0].on('connection', onconnection());
         servers[1].on('connection', onconnection(1));
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 9,
           computors: [
@@ -721,7 +722,7 @@ describe('client.sendCommand - 1 = fetch identityNonce (2 of 3 with faulty conne
         servers[1].on('connection', onFaultyConnection);
         servers[2].on('connection', onconnection());
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 10,
           computors: [
@@ -756,7 +757,7 @@ describe('client.sendCommand - 2 = fetch energy (2 of 3)', function () {
         servers[1].on('connection', onconnection(1));
         servers[2].on('connection', onconnection());
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 11,
           computors: [
@@ -788,7 +789,7 @@ describe('client.transaction, client.sendCommand - 3 = send transfer', function 
       servers[1].on('connection', onconnection(1));
       servers[2].on('connection', onconnection());
       return [
-        createClient({
+        qubic.client({
           seed,
           index: 1337,
           computors: [
@@ -896,7 +897,7 @@ describe('client.transaction (send effect)', function () {
       servers[1].on('connection', onconnection(1));
       servers[2].on('connection', onconnection());
       return [
-        createClient({
+        qubic.client({
           seed,
           index: 1338,
           computors: [
@@ -948,7 +949,7 @@ describe('client.sendCommand - 4 = fetch transfer status (2 of 3)', function () 
         servers[1].on('connection', onconnection(1));
         servers[2].on('connection', onconnection());
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 12,
           computors: [
@@ -979,7 +980,7 @@ describe('client.sendCommand - 4 = fetch transfer status (2 of 3 with relaunch)'
     should: 'resolve with correct transfer status',
     awaitActual: crypto.then(function ({ schnorrq }) {
       return openServers().then(function ({ servers, ports }) {
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 13,
           computors: [
@@ -1022,7 +1023,7 @@ describe('client.addEnvironmentListener/removeEnvironmentListener', function () 
         servers[0].on('connection', onconnection());
         servers[1].on('connection', onconnection());
         servers[2].on('connection', onconnection());
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 14,
           computors: [
@@ -1088,7 +1089,7 @@ describe('client.setComputorUrl', function () {
     should: 'reopen connections',
     awaitActual: crypto.then(function ({ schnorrq }) {
       return openServers().then(function ({ servers, ports }) {
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 15,
           computors: [
@@ -1129,7 +1130,7 @@ describe('client.setComputorUrl', function () {
     should: 'not reopen connection',
     awaitActual: crypto.then(function ({ schnorrq }) {
       return openServers().then(function ({ servers, ports }) {
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 16,
           computors: [

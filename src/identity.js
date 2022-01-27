@@ -51,13 +51,13 @@ export const privateKey = function (seed, index, K12) {
 /**
  * Creates an identity with checksum.
  *
- * @function createIdentity
+ * @function identity
  * @memberof module:qubic
  * @param {string} seed - Seed in 55 lowercase latin chars.
  * @param {number} index - Identity index.
  * @returns {Promise<string>} Identity with checksum in uppercase hex.
  */
-export const createIdentity = function (seed, index) {
+export const identity = function (seed, index) {
   if (!new RegExp(`^[a-z]{${SEED_IN_LOWERCASE_LATIN_LENGTH}}$`).test(seed)) {
     throw new Error(
       `Invalid seed. Must be ${SEED_IN_LOWERCASE_LATIN_LENGTH} lowercase latin chars.`

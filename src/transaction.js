@@ -38,7 +38,7 @@ export const HASH_LENGTH = 32; // 256-bit output for 128-bit collision security 
  * @property {number} index - Index of private key which was used to derive sender identity.
  * @property {string} senderIdentity - Sender identity in uppercase hex.
  * @property {number} identityNonce - Identity nonce.
- * @property {TypedArray} effectPayload - Effect payload
+ * @property {Uint8Array} effectPayload - Effect payload
  */
 
 /**
@@ -49,7 +49,7 @@ export const HASH_LENGTH = 32; // 256-bit output for 128-bit collision security 
  * @property {number} identityNonce - Identity nonce.
  * @property {bigint} energy - Transferred energy to recipient identity.
  * @property {string} recipientIdentity - Recipient identity in shifted uppercase hex.
- * @property {TypedArray} effectPayload - Effect payload
+ * @property {Uint8Array} effectPayload - Effect payload
  */
 
 /**

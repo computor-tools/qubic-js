@@ -3,8 +3,8 @@
 import bigInt from 'big-integer';
 import { transaction } from '../src/transaction.js';
 import { shiftedHexToBytes } from '../src/utils/hex.js';
-import { crypto } from '../src/index.js';
-import { createIdentity, PUBLIC_KEY_LENGTH_IN_HEX } from '../src/identity.js';
+import { crypto } from '../src/crypto/index.js';
+import { identity, PUBLIC_KEY_LENGTH_IN_HEX } from '../src/identity.js';
 import { toString } from './utils.js';
 
 describe('transaction', function () {
@@ -76,7 +76,7 @@ describe('transaction', function () {
   assert({
     given: 'valid arguments (index=undefined)',
     should: 'resolve with correct message and signature',
-    awaitActual: createIdentity(transfer.seed, 0)
+    awaitActual: identity(transfer.seed, 0)
       .then(function (senderIdentity) {
         return transaction({
           ...transfer,

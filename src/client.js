@@ -1,8 +1,8 @@
 'use strict';
 
-import { createConnection } from './connection.js';
+import { connection as _connection } from './connection.js';
 import { transaction } from './transaction.js';
-import { createIdentity } from './identity.js';
+import { identity } from './identity.js';
 import level from 'level';
 import path from 'path';
 import bigInt from 'big-integer';
@@ -10,7 +10,7 @@ import bigInt from 'big-integer';
 /* globals Connection */
 
 /**
- * @function createClient
+ * @function client
  * @memberof module:qubic
  * @param {object} options - Client options.
  * @param {string} options.seed - Seed in 55 lowercase latin chars.
@@ -34,9 +34,9 @@ import bigInt from 'big-integer';
  * @fires Client#inclusion
  * @fires Client#rejection
  * @returns {Client}
- * @example import { createClient } from 'qubic-js';
+ * @example import qubic from 'qubic-js';
  *
- * const client = createClient({
+ * const client = qubic.client({
  *   seed: 'vmscmtbcqjbqyqcckegsfdsrcgjpeejobolmimgorsqwgupzhkevreu',
  *   computors: [
  *     { url: 'wss://AA.computor.com' },
@@ -53,7 +53,7 @@ import bigInt from 'big-integer';
  * client.addListener('info', console.log);
  *
  */
-export const createClient = function ({
+export const client = function ({
   seed,
   index = 0,
   connection,
@@ -66,17 +66,17 @@ export const createClient = function ({
 }) {
   connection =
     connection ||
-    createConnection({
+    _connection({
       computors,
       synchronizationInterval,
       adminPublicKey,
       reconnectTimeoutDuration,
     });
-  const identity = createIdentity(seed, index);
+  const id = identity(seed, index);
   db = Promise.resolve(
     db ||
-      identity.then(function (identity) {
-        return level(path.join(dbPath || './', identity));
+      id.then(function (id) {
+        return level(path.join(dbPath || './', id));
       })
   );
   const infoListeners = [];
@@ -140,14 +140,14 @@ export const createClient = function ({
        * @memberof Client
        */
       get identity() {
-        return identity;
+        return id;
       },
 
       /* eslint-disable jsdoc/no-undefined-types */
       /**
        * Sends energy to recipient.
        *
-       * @function energyTransfer
+       * @function transaction
        * @memberof Client
        * @param {object} params
        * @param {string} params.recipientIdentity - Recipient identity in uppercase hex.
@@ -158,9 +158,9 @@ export const createClient = function ({
       /* eslint-enable jsdoc/no-undefined-types */
       async transaction(params) {
         const [{ identityNonce }, { energy }] = await Promise.all([
-          connection.sendCommand(1, { identity: await identity }),
+          connection.sendCommand(1, { identity: await id }),
           params.recipientIdentity
-            ? connection.sendCommand(2, { identity: await identity })
+            ? connection.sendCommand(2, { identity: await id })
             : { energy: undefined },
         ]);
 
@@ -171,7 +171,7 @@ export const createClient = function ({
         const { messageDigest, message, signature } = await transaction({
           seed,
           index,
-          senderIdentity: await identity,
+          senderIdentity: await id,
           identityNonce,
           energy: params.energy,
           recipientIdentity: params.recipientIdentity,

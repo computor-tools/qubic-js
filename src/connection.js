@@ -30,7 +30,7 @@ const compareResponses = function (responses) {
 };
 
 /**
- * @function createConnection
+ * @function connection
  * @memberof module:qubic
  * @param {object} params - Connection params.
  * @param {object[]} params.computors - Specifies 3 computors to connect to, and with what options.
@@ -44,9 +44,9 @@ const compareResponses = function (responses) {
  * @fires Connection#close
  * @fires Connection#error
  * @returns {Connection}
- * @example import { createConnection } from 'qubic-js';
+ * @example import qubic from 'qubic-js';
  *
- * const connection = createConnection({
+ * const connection = qubic.connection({
  *   computors: [
  *     { url: 'wss://AA.computor.com' },
  *     { url: 'wss://AB.computor.com' },
@@ -62,7 +62,7 @@ const compareResponses = function (responses) {
  * connection.addListener('info', console.log);
  *
  */
-export const createConnection = function ({
+export const connection = function ({
   computors,
   synchronizationInterval,
   adminPublicKey,
