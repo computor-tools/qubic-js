@@ -60,7 +60,7 @@ import * as qubic from 'qubic-js';
 | [options.synchronizationInterval] | <code>number</code> |  | If no new tick appears after this interval an info event is emitted with updated sync status. Ignored when connection option is used. |
 | [options.adminPublicKey] | <code>string</code> |  | Admin public key, for verification of current epoch and tick which are signed by admin. Ignored when connection option is used. |
 | [options.reconnectTimeoutDuration] | <code>number</code> | <code>100</code> | Reconnect timeout duration. Ignored when connection option is used. |
-| [options.db] | <code>object</code> |  | Database implementing the [level interface](https://github.com/Level/level), for storing transfers. |
+| [options.db] | <code>object</code> |  | Database implementing the [level interface](https://github.com/Level/level), for storing transactions. |
 | [options.dbPath] | <code>string</code> |  | Database path. |
 
 **Example**  
@@ -232,9 +232,9 @@ qubic
 
 | Name | Type | Description |
 | --- | --- | --- |
-| messageDigest | <code>string</code> | Hash of included transfer in uppercase hex. |
-| epoch | <code>number</code> | Epoch at which transfer was included. |
-| tick | <code>number</code> | Tick at which transfer was included. |
+| messageDigest | <code>string</code> | Hash of included transaction in uppercase hex. |
+| epoch | <code>number</code> | Epoch at which transaction was included. |
+| tick | <code>number</code> | Tick at which transaction was included. |
 
 
 <br><a name="Client+event_rejection"></a>
@@ -246,7 +246,7 @@ qubic
 
 | Name | Type | Description |
 | --- | --- | --- |
-| messageDigest | <code>string</code> | Hash of rejected transfer in uppercase hex. |
+| messageDigest | <code>string</code> | Hash of rejected transaction in uppercase hex. |
 | reason | <code>string</code> | Reason of rejection. |
 
 
@@ -259,7 +259,11 @@ qubic
 <br><a name="Client.transaction"></a>
 
 ### Client.transaction(params) ⇒ [<code>Transaction</code>](#Transaction)
-> Sends energy to recipient.
+> Creates a transaction which includes a transfer of energy between 2 entities,
+> or an effect, or both. Transaction is atomic, meaaning that both transfer and
+> effect will be proccessed or none.
+> 
+> Transactions are stored in database and their inclusion or rejection are monitored.
 
 **Returns**: [<code>Transaction</code>](#Transaction) - Transaction object.  
 
@@ -342,8 +346,8 @@ client.addEvironmentListener(
 > | --- | --- | --- | --- |
 > | `1` | `{ identity }` | `{ identity, identityNonce }` | Fetches `identityNonce`. |
 > | `2` | `{ identity }` | `{ identity, energy }` | Fetches `energy`. |
-> | `3` | `{ message, signature }` | `void` | Sends a transfer with `base64`-encoded `message` & `signature` fields. |
-> | `4` | `{ messageDigest }` | `{ messageDigest, inclusionState, tick, epoch }` or `{ messageDigest, reason }` | Fetches status of a transfer. Rejects with reason in case identity nonce has been overwritten. |
+> | `3` | `{ message, signature }` | `void` | Sends a transaction with `base64`-encoded `message` & `signature` fields. |
+> | `4` | `{ messageDigest }` | `{ messageDigest, inclusionState, tick, epoch }` or `{ messageDigest, reason }` | Fetches status of a transaction. Rejects with reason in case identity nonce has been overwritten. |
 > | `5` | `{ environmentDigest }` | `{ environmentDigest, epoch, tick, data }` | Subscribes to an environment by its digest. |
 > | `6` | `{ environmentDigest }` | `{ environmentDigest }` | Cancels environment subscription. |
 
@@ -463,8 +467,8 @@ client.addEvironmentListener(
 > | --- | --- | --- | --- |
 > | `1` | `{ identity }` | `{ identity, identityNonce }` | Fetches `identityNonce`. |
 > | `2` | `{ identity }` | `{ identity, energy }` | Fetches `energy`. |
-> | `3` | `{ message, signature }` | `void` | Sends a transfer with `base64`-encoded `message` & `signature` fields. |
-> | `4` | `{ messageDigest }` | `{ messageDigest, inclusionState, tick, epoch }` or `{ messageDigest, reason }` | Fetches status of a transfer. Rejects with reason in case identity nonce has been overwritten. |
+> | `3` | `{ message, signature }` | `void` | Sends a transaction with `base64`-encoded `message` & `signature` fields. |
+> | `4` | `{ messageDigest }` | `{ messageDigest, inclusionState, tick, epoch }` or `{ messageDigest, reason }` | Fetches status of a transaction. Rejects with reason in case identity nonce has been overwritten. |
 > | `5` | `{ environmentDigest }` | `{ environmentDigest, epoch, tick, data }` | Subscribes to an environment by its digest. |
 > | `6` | `{ environmentDigest }` | `{ environmentDigest }` | Cancels environment subscription. |
 

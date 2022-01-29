@@ -25,7 +25,7 @@ import bigInt from 'big-integer';
  * @param {string} [options.adminPublicKey] - Admin public key, for verification of current epoch and tick which are signed by admin.
  * Ignored when connection option is used.
  * @param {number} [options.reconnectTimeoutDuration=100] - Reconnect timeout duration. Ignored when connection option is used.
- * @param {object} [options.db] - Database implementing the [level interface](https://github.com/Level/level), for storing transfers.
+ * @param {object} [options.db] - Database implementing the [level interface](https://github.com/Level/level), for storing transactions.
  * @param {string} [options.dbPath] - Database path.
  * @fires Connection#info
  * @fires Connection#open
@@ -97,9 +97,9 @@ export const client = function ({
                *
                * @event Client#inclusion
                * @type {object}
-               * @property {string} messageDigest - Hash of included transfer in uppercase hex.
-               * @property {number} epoch - Epoch at which transfer was included.
-               * @property {number} tick - Tick at which transfer was included.
+               * @property {string} messageDigest - Hash of included transaction in uppercase hex.
+               * @property {number} epoch - Epoch at which transaction was included.
+               * @property {number} tick - Tick at which transaction was included.
                */
               that.emit('inclusion', {
                 messageDigest: key,
@@ -114,7 +114,7 @@ export const client = function ({
              *
              * @event Client#rejection
              * @type {object}
-             * @property {string} messageDigest - Hash of rejected transfer in uppercase hex.
+             * @property {string} messageDigest - Hash of rejected transaction in uppercase hex.
              * @property {string} reason - Reason of rejection.
              */
             that.emit('rejection', { messageDigest: key, reason: response.reason });
@@ -145,7 +145,11 @@ export const client = function ({
 
       /* eslint-disable jsdoc/no-undefined-types */
       /**
-       * Sends energy to recipient.
+       * Creates a transaction which includes a transfer of energy between 2 entities,
+       * or an effect, or both. Transaction is atomic, meaaning that both transfer and
+       * effect will be proccessed or none.
+       *
+       * Transactions are stored in database and their inclusion or rejection are monitored.
        *
        * @function transaction
        * @memberof Client

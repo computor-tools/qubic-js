@@ -232,8 +232,8 @@ export const connection = function ({
    * | --- | --- | --- | --- |
    * | `1` | `{ identity }` | `{ identity, identityNonce }` | Fetches `identityNonce`. |
    * | `2` | `{ identity }` | `{ identity, energy }` | Fetches `energy`. |
-   * | `3` | `{ message, signature }` | `void` | Sends a transfer with `base64`-encoded `message` & `signature` fields. |
-   * | `4` | `{ messageDigest }` | `{ messageDigest, inclusionState, tick, epoch }` or `{ messageDigest, reason }` | Fetches status of a transfer. Rejects with reason in case identity nonce has been overwritten. |
+   * | `3` | `{ message, signature }` | `void` | Sends a transaction with `base64`-encoded `message` & `signature` fields. |
+   * | `4` | `{ messageDigest }` | `{ messageDigest, inclusionState, tick, epoch }` or `{ messageDigest, reason }` | Fetches status of a transaction. Rejects with reason in case identity nonce has been overwritten. |
    * | `5` | `{ environmentDigest }` | `{ environmentDigest, epoch, tick, data }` | Subscribes to an environment by its digest. |
    * | `6` | `{ environmentDigest }` | `{ environmentDigest }` | Cancels environment subscription. |
    *
