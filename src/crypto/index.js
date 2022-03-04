@@ -1,6 +1,6 @@
 'use strict';
 
-import Module from './libFourQ_K12.cjs';
+import Module from './libFourQ_K12.js';
 
 const allocU8 = function (l, v) {
   let ptr = Module._malloc(l);
@@ -45,8 +45,9 @@ export const crypto = new Promise(function (resolve) {
       };
 
       Module._SchnorrQ_KeyGeneration(sk.byteOffset, pk.byteOffset);
+      const key = pk.slice();
       free();
-      return pk.slice();
+      return key;
     };
 
     /**
@@ -76,8 +77,9 @@ export const crypto = new Promise(function (resolve) {
         message.length,
         s.byteOffset
       );
+      const sig = s.slice();
       free();
-      return s.slice();
+      return sig;
     };
 
     /**
@@ -107,8 +109,9 @@ export const crypto = new Promise(function (resolve) {
         s.byteOffset,
         v.byteOffset
       );
+      const ver = v[0];
       free();
-      return v[0];
+      return ver;
     };
 
     /**
@@ -126,8 +129,9 @@ export const crypto = new Promise(function (resolve) {
       };
 
       Module._CompressedPublicKeyGeneration(sk.byteOffset, pk.byteOffset);
+      const key = pk.slice();
       free();
-      return pk.slice();
+      return key;
     };
 
     /**
@@ -148,8 +152,9 @@ export const crypto = new Promise(function (resolve) {
       };
 
       Module._CompressedSecretAgreement(sk.byteOffset, pk.byteOffset, shk.byteOffset);
+      const key = shk.slice();
       free();
-      return shk.slice();
+      return key;
     };
 
     /**
@@ -169,7 +174,7 @@ export const crypto = new Promise(function (resolve) {
       };
 
       Module._KangarooTwelve(i.byteOffset, input.length, o.byteOffset, outputLength, 0, 0);
-      output.set(o, outputOffset);
+      output.set(o.slice(), outputOffset);
       free();
     };
 

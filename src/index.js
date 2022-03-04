@@ -10,9 +10,10 @@ import {
   PUBLIC_KEY_LENGTH,
   PUBLIC_KEY_LENGTH_IN_HEX,
 } from './identity.js';
-import { transaction } from './transaction.js';
+import { transfer } from './transfer.js';
 import { connection } from './connection.js';
 import { client } from './client.js';
+import { computor } from './computor.js';
 import { crypto } from './crypto/index.js';
 
 /**
@@ -23,14 +24,18 @@ const qubic = {
   verifyChecksum,
   privateKey,
   seedChecksum,
-  SEED_IN_LOWERCASE_LATIN_LENGTH,
-  CHECKSUM_LENGTH,
-  PUBLIC_KEY_LENGTH,
-  PUBLIC_KEY_LENGTH_IN_HEX,
-  transaction,
+  transfer,
   connection,
   client,
+  computor,
   crypto,
 };
 
 export default qubic;
+
+export {
+  SEED_IN_LOWERCASE_LATIN_LENGTH,
+  CHECKSUM_LENGTH,
+  PUBLIC_KEY_LENGTH,
+  PUBLIC_KEY_LENGTH_IN_HEX,
+};

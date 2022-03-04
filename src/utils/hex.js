@@ -40,3 +40,11 @@ export const hexToBytes = function (hex) {
   }
   return Uint8Array.from(Buffer.from(hex, 'hex'));
 };
+
+export const bytesToHex = function (bytes) {
+  let hex = '';
+  for (let i = 0; i < bytes.length; i++) {
+    hex += HEX_CHARS[bytes[i] >> 4] + HEX_CHARS[bytes[i] & 15];
+  }
+  return hex;
+};

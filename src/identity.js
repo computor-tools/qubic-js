@@ -11,7 +11,7 @@ export const PUBLIC_KEY_LENGTH_IN_HEX = PUBLIC_KEY_LENGTH * HEX_CHARS_PER_BYTE;
 export const CHECKSUM_LENGTH = 3;
 const SEED_CHECKSUM_LENGTH = 1.5;
 
-const seedToBytes = function (seed) {
+export const seedToBytes = function (seed) {
   const bytes = new Uint8Array(seed.length);
   for (let i = 0; i < seed.length; i++) {
     bytes[i] = SEED_ALPHABET.indexOf(seed[i]);
@@ -30,8 +30,8 @@ const seedToBytes = function (seed) {
  * @returns {Uint8Array} Private key bytes.
  */
 export const privateKey = function (seed, index, K12) {
-  seed = seedToBytes(seed);
-  const preimage = seed.slice();
+  const seed2 = seedToBytes(seed);
+  const preimage = seed2.slice();
 
   while (index-- > 0) {
     for (let i = 0; i < preimage.length; i++) {
@@ -79,6 +79,18 @@ export const identity = function (seed, index) {
     );
     return bytesToShiftedHex(publicKeyWithChecksum).toUpperCase();
   });
+};
+
+export const addChecksum = async function (identity) {
+  const identityWithChecksum = new Uint8Array(PRIVATE_KEY_LENGTH + CHECKSUM_LENGTH);
+  identityWithChecksum.set(identity.slice(0, PRIVATE_KEY_LENGTH));
+  (await crypto).K12(
+    identity.subarray(0, PUBLIC_KEY_LENGTH),
+    identityWithChecksum,
+    CHECKSUM_LENGTH,
+    PUBLIC_KEY_LENGTH
+  );
+  return identityWithChecksum;
 };
 
 /**

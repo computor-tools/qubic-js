@@ -19,7 +19,7 @@
     "browser": true,
     "node": true
   },
-  "ignorePatterns": ["src/crypto/libFourQ_K12.cjs", "coverage", "lib"],
+  "ignorePatterns": ["src/crypto/libFourQ_K12.js", "coverage", "lib"],
   "overrides": [{
     "files": ["babel.config.cjs", "commitlint.config.cjs", "setupJestAfterEnv.js"],
     "env": {
