@@ -112,9 +112,6 @@ export const transfer = async function ({ seed, index, source, destination, ener
   const hashBytes = new Uint8Array(HASH_LENGTH);
   K12(transferAndSignature, hashBytes, HASH_LENGTH);
 
-  Object.freeze(transferAndSignature);
-  Object.freeze(hashBytes);
-
   const transferObj = {
     bytes: transferAndSignature,
     hashBytes,
