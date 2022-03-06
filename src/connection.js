@@ -8,7 +8,7 @@ import { PUBLIC_KEY_LENGTH } from './identity.js';
 import { timestamp } from './timestamp.js';
 import { HASH_LENGTH, SIGNATURE_LENGTH, TRANSFER_LENGTH } from './transfer.js';
 
-const NUMBER_OF_COMPUTORS = 26 * 26;
+export const NUMBER_OF_COMPUTORS = 26 * 26;
 const NUMBER_OF_CONNECTIONS = 3;
 
 const PROTOCOL_VERSION = 4;
@@ -66,7 +66,7 @@ const COMPUTER_STATE_COMPUTOR_PUBLIC_KEYS_OFFSET =
 const COMPUTER_STATE_COMPUTOR_PUBLIC_KEYS_LENGTH = NUMBER_OF_COMPUTORS * PUBLIC_KEY_LENGTH;
 const COMPUTER_STATE_SIGNATURE_OFFSET =
   COMPUTER_STATE_COMPUTOR_PUBLIC_KEYS_OFFSET + COMPUTER_STATE_COMPUTOR_PUBLIC_KEYS_LENGTH;
-const COMPUTER_STATE_SIGNATURE_LENGTH = 64;
+const COMPUTER_STATE_SIGNATURE_LENGTH = SIGNATURE_LENGTH;
 
 const PUBLIC_PEER_LENGTH = 4;
 const NUMBER_OF_PUBLIC_PEERS = 4;
@@ -85,16 +85,14 @@ const TRANSFER_STATUS_EPOCH_LENGTH = 2;
 const TRANSFER_STATUS_TICK_OFFSET = TRANSFER_STATUS_EPOCH_OFFSET + TRANSFER_STATUS_EPOCH_LENGTH;
 const TRANSFER_STATUS_TICK_LENGTH = 4;
 const TRANSFER_STATUS_SIGNATURE_OFFSET = TRANSFER_STATUS_TICK_OFFSET + TRANSFER_STATUS_TICK_LENGTH;
-const TRANSFER_STATUS_SIGNATURE_LENGTH = 64;
+const TRANSFER_STATUS_SIGNATURE_LENGTH = SIGNATURE_LENGTH;
+const TRANSFER_STATUS_LENGTH = TRANSFER_STATUS_SIGNATURE_OFFSET + TRANSFER_STATUS_SIGNATURE_LENGTH;
 
-const compareComputerStateSignatures = function (responses, status, rightOffset, leftOffset = 0) {
-  while (rightOffset < responses.length) {
+const compareSignatures = function (signatures, status, rightOffset, leftOffset = 0) {
+  while (rightOffset < signatures.length) {
     let equal = true;
-    for (let j = 0; j < COMPUTER_STATE_SIGNATURE_LENGTH; j++) {
-      if (
-        responses[leftOffset][COMPUTER_STATE_SIGNATURE_OFFSET + j] !==
-        responses[rightOffset][COMPUTER_STATE_SIGNATURE_OFFSET + j]
-      ) {
+    for (let j = 0; j < SIGNATURE_LENGTH; j++) {
+      if (signatures[leftOffset][j] !== signatures[rightOffset][j]) {
         equal = false;
         break;
       }
@@ -104,8 +102,8 @@ const compareComputerStateSignatures = function (responses, status, rightOffset,
     }
     rightOffset++;
   }
-  if (responses.length === NUMBER_OF_COMPUTORS && status === 1) {
-    return compareComputerStateSignatures(responses, status, 2, 1);
+  if (signatures.length === NUMBER_OF_COMPUTORS && status === 1) {
+    return compareSignatures(signatures, status, 2, 1);
   }
   return { status, rightOffset };
 };
@@ -154,6 +152,7 @@ export const connection = function ({
   let computerStateComparisonRightOffset = 1;
   let getComputerStateTimeouts = Array(NUMBER_OF_CONNECTIONS);
   let computerStateSynchronizationTimeout;
+  let transferStatusComparisonRightOffsetsByDigest = new Map();
   const adminPublicKeyBytes = shiftedHexToBytes(adminPublicKey.toLowerCase());
   let isAdminPublicKeyNULL = true;
   for (let i = 0; i < adminPublicKeyBytes.length; i++) {
@@ -192,7 +191,9 @@ export const connection = function ({
 
     sockets.forEach(function (socket) {
       socket.open.then(function () {
-        socket.send(request.buffer);
+        if (socket.readyState === 1) {
+          socket.send(request.buffer);
+        }
       });
     });
   };
@@ -213,7 +214,9 @@ export const connection = function ({
       true
     );
     socket.open.then(function () {
-      socket.send(request.buffer);
+      if (socket.readyState === 1) {
+        socket.send(request.buffer);
+      }
     });
   };
 
@@ -236,17 +239,26 @@ export const connection = function ({
 
     sockets.forEach(function (socket) {
       socket.open.then(function () {
-        socket.send(request.buffer);
+        if (socket.readyState === 1) {
+          socket.send(request.buffer);
+        }
       });
     });
   };
 
-  const getTransferStatus = function (digest) {
-    const responses = Array(NUMBER_OF_COMPUTORS).fill([]);
+  const getTransferStatus = async function (digest) {
+    let responses = transferStatusResponsesByDigest.get(digest);
+    if (responses === undefined) {
+      responses = Array(NUMBER_OF_COMPUTORS).fill([]);
+      responses.resolvers = [];
+    } else {
+      responses.fill([]);
+    }
     const promise = new Promise(function (resolve) {
-      responses.resolve = resolve;
+      responses.resolvers.push(resolve);
     });
     transferStatusResponsesByDigest.set(digest, responses);
+    transferStatusComparisonRightOffsetsByDigest.set(digest, Array(NUMBER_OF_COMPUTORS));
 
     const request = new Uint8Array(TRANSFER_STATUS_REQUEST_LENGTH);
     const requestView = new DataView(request.buffer);
@@ -262,23 +274,33 @@ export const connection = function ({
 
     request.set(shiftedHexToBytes(digest.toLowerCase()), TRANSFER_STATUS_REQUEST_DIGEST_OFFSET);
 
+    const requestsToResend = [];
     for (let i = 1; i <= NUMBER_OF_COMPUTORS; i++) {
-      const ts = timestamp();
-      request.set(new Uint8Array(REQUEST_TIMESTAMP_LENGTH).fill(0), REQUEST_TIMESTAMP_OFFSET);
-      requestView.setBigUint64(REQUEST_TIMESTAMP_OFFSET, ts, true);
+      await new Promise(function (resolve) {
+        setTimeout(function () {
+          resolve();
+        }, 100);
+      });
+
+      requestView.setBigUint64(REQUEST_TIMESTAMP_OFFSET, timestamp(), true);
       requestView['setUint' + TRANSFER_STATUS_REQUEST_COMPUTOR_INDEX_LENGTH * 8](
         TRANSFER_STATUS_REQUEST_COMPUTOR_INDEX_OFFSET,
-        i
+        i,
+        true
       );
+
       const request2 = request.slice();
-      requestsToResendByDigest.set(ts, request2.buffer);
+      requestsToResend.push(request2);
 
       sockets.forEach(function (socket) {
         socket.open.then(function () {
-          socket.send(request2.buffer);
+          if (socket.readyState === 1) {
+            socket.send(request2.buffer);
+          }
         });
       });
     }
+    requestsToResendByDigest.set(digest, requestsToResend);
 
     return promise;
   };
@@ -398,162 +420,277 @@ export const connection = function ({
           exchangePublicPeers(socket);
           resolveOnOpenOrClose();
 
-          requestsToResendByDigest.forEach(function (request) {
-            socket.open.then(function () {
-              socket.send(request);
+          requestsToResendByDigest.forEach(async function (requests) {
+            requests.forEach(async function (request) {
+              await new Promise(function (resolve) {
+                setTimeout(function () {
+                  resolve();
+                }, 100);
+              });
+              const requestView = new DataView(request.buffer);
+              request.set(
+                new Uint8Array(REQUEST_TIMESTAMP_LENGTH).fill(0),
+                REQUEST_TIMESTAMP_OFFSET
+              );
+              requestView.setBigUint64(REQUEST_TIMESTAMP_OFFSET, timestamp(), true);
+              if (socket.readyState === 1) {
+                socket.send(request.buffer);
+              }
             });
           });
         };
 
         socket.onmessage = async function (message) {
-          const response = new Uint8Array(message.data);
-          const responseView = new DataView(response.buffer);
+          let offset = 0;
+          const data = new Uint8Array(message.data);
+          const dataView = new DataView(message.data);
+          while (offset < data.length) {
+            const response = data.subarray(
+              offset,
+              offset + dataView['getUint' + SIZE_LENGTH * 8](SIZE_OFFSET, true)
+            );
+            const responseView = new DataView(response.buffer);
 
-          switch (response[REQUEST_OFFSET]) {
-            case REQUEST_TYPES.WEBSOCKET:
-              switch (response[RESPONSE_TYPE_OFFSET]) {
-                case WEBSOCKET_REQUEST_TYPES.GET_COMPUTER_STATE:
-                  {
-                    const computorIndex = responseView[
-                      'getUint' + COMPUTER_STATE_COMPUTOR_INDEX_LENGTH * 8
-                    ](COMPUTER_STATE_COMPUTOR_INDEX_OFFSET, true);
+            switch (response[REQUEST_OFFSET]) {
+              case REQUEST_TYPES.WEBSOCKET:
+                switch (response[RESPONSE_TYPE_OFFSET]) {
+                  case WEBSOCKET_REQUEST_TYPES.GET_COMPUTER_STATE:
+                    {
+                      const computorIndex = responseView[
+                        'getUint' + COMPUTER_STATE_COMPUTOR_INDEX_LENGTH * 8
+                      ](COMPUTER_STATE_COMPUTOR_INDEX_OFFSET, true);
 
-                    if (computorIndex === NUMBER_OF_COMPUTORS) {
-                      const hash = new Uint8Array(HASH_LENGTH);
-                      (await crypto).K12(
-                        response.slice(
-                          COMPUTER_STATE_COMPUTOR_INDEX_OFFSET,
-                          COMPUTER_STATE_SIGNATURE_OFFSET
-                        ),
-                        hash,
-                        HASH_LENGTH
-                      );
-                      if (
-                        (await crypto).schnorrq.verify(
-                          adminPublicKeyBytes,
-                          hash,
+                      if (computorIndex === NUMBER_OF_COMPUTORS) {
+                        const hash = new Uint8Array(HASH_LENGTH);
+                        (await crypto).K12(
                           response.slice(
-                            COMPUTER_STATE_SIGNATURE_OFFSET,
-                            COMPUTER_STATE_SIGNATURE_OFFSET + COMPUTER_STATE_SIGNATURE_LENGTH
-                          )
-                        ) === 1
-                      ) {
-                        const responseTimestamp = responseView.getBigUint64(
-                          RESPONSE_TIMESTAMP_OFFSET,
-                          true
+                            COMPUTER_STATE_COMPUTOR_INDEX_OFFSET,
+                            COMPUTER_STATE_SIGNATURE_OFFSET
+                          ),
+                          hash,
+                          HASH_LENGTH
                         );
-                        const timestamp = responseView.getBigUint64(
-                          COMPUTER_STATE_TIMESTAMP_OFFSET,
-                          true
-                        );
-                        const responses = computerStateResponsesByTimestamp.get(responseTimestamp);
-                        if (responses !== undefined) {
-                          responses.push(response);
-
-                          if (responses.length === 1) {
-                            latestComputerState.status = 1;
-                            that.emit('info', {
-                              computerState: {
-                                ...latestComputerState,
-                                computorPublicKeys: [
-                                  ...(latestComputerState?.computorPublicKeys || []),
-                                ],
-                              },
-                              peers: sockets.map(function ({ ip, readyState }) {
-                                return { ip, readyState };
-                              }),
-                            });
-                            return;
-                          }
-
-                          const { status, rightOffset } = compareComputerStateSignatures(
-                            responses,
-                            latestComputerState.status,
-                            computerStateComparisonRightOffset
+                        if (
+                          (await crypto).schnorrq.verify(
+                            adminPublicKeyBytes,
+                            hash,
+                            response.slice(
+                              COMPUTER_STATE_SIGNATURE_OFFSET,
+                              COMPUTER_STATE_SIGNATURE_OFFSET + COMPUTER_STATE_SIGNATURE_LENGTH
+                            )
+                          ) === 1
+                        ) {
+                          const responseTimestamp = responseView.getBigUint64(
+                            RESPONSE_TIMESTAMP_OFFSET,
+                            true
                           );
+                          const timestamp = responseView.getBigUint64(
+                            COMPUTER_STATE_TIMESTAMP_OFFSET,
+                            true
+                          );
+                          const responses =
+                            computerStateResponsesByTimestamp.get(responseTimestamp);
+                          if (responses !== undefined) {
+                            responses.push(response);
 
-                          computerStateComparisonRightOffset = rightOffset;
-
-                          if (latestComputerState.status < status) {
-                            latestComputerStateSynchronizationTimestamp = Date.now();
-                            latestComputerState = {
-                              status,
-                              epoch: responseView['getUint' + COMPUTER_STATE_EPOCH_LENGTH * 8](
-                                COMPUTER_STATE_EPOCH_OFFSET,
-                                true
-                              ),
-                              tick: responseView['getUint' + COMPUTER_STATE_TICK_LENGTH * 8](
-                                COMPUTER_STATE_TICK_OFFSET,
-                                true
-                              ),
-                              timestamp,
-                              computorPublicKeys: Array(NUMBER_OF_COMPUTORS),
-                            };
-
-                            let offset = COMPUTER_STATE_COMPUTOR_PUBLIC_KEYS_OFFSET;
-                            latestComputerState.computorPublicKeys.length = 0;
-                            while (
-                              offset <
-                              COMPUTER_STATE_COMPUTOR_PUBLIC_KEYS_OFFSET +
-                                COMPUTER_STATE_COMPUTOR_PUBLIC_KEYS_LENGTH
-                            ) {
-                              latestComputerState.computorPublicKeys.push(
-                                response.subarray(offset, (offset += PUBLIC_KEY_LENGTH))
-                              );
+                            if (responses.length === 1) {
+                              latestComputerState.status = 1;
+                              that.emit('info', {
+                                computerState: {
+                                  ...latestComputerState,
+                                  computorPublicKeys: [
+                                    ...(latestComputerState?.computorPublicKeys || []),
+                                  ],
+                                },
+                                peers: sockets.map(function ({ ip, readyState }) {
+                                  return { ip, readyState };
+                                }),
+                              });
+                              return;
                             }
 
-                            /**
-                             * Info event.
-                             *
-                             * @event Connection#info
-                             * @type {object}
-                             * @property {number} status - Indicates which of the 3 computors have provided the same tick and epoch.
-                             * 0 when offline, 3 when fully synced.
-                             * @property {number} epoch - Current epoch.
-                             * @property {number} tick - Current tick.
-                             */
-                            that.emit('info', {
-                              computerState: {
-                                ...latestComputerState,
-                                computorPublicKeys: [...latestComputerState.computorPublicKeys],
-                              },
-                              peers: sockets.map(function ({ ip, readyState }) {
-                                return { ip, readyState };
+                            const { status, rightOffset } = compareSignatures(
+                              responses.map(function (response) {
+                                return response.subarray(
+                                  COMPUTER_STATE_SIGNATURE_OFFSET,
+                                  COMPUTER_STATE_SIGNATURE_OFFSET + COMPUTER_STATE_SIGNATURE_LENGTH
+                                );
                               }),
-                            });
-                          }
+                              latestComputerState.status,
+                              computerStateComparisonRightOffset
+                            );
 
-                          if (responses.length === NUMBER_OF_COMPUTORS) {
-                            latestComputerState.status = 0;
-                            computerStateResponsesByTimestamp.delete(responseTimestamp);
+                            computerStateComparisonRightOffset = rightOffset;
+
+                            if (latestComputerState.status < status) {
+                              latestComputerStateSynchronizationTimestamp = Date.now();
+                              latestComputerState = {
+                                status,
+                                epoch: responseView['getUint' + COMPUTER_STATE_EPOCH_LENGTH * 8](
+                                  COMPUTER_STATE_EPOCH_OFFSET,
+                                  true
+                                ),
+                                tick: responseView['getUint' + COMPUTER_STATE_TICK_LENGTH * 8](
+                                  COMPUTER_STATE_TICK_OFFSET,
+                                  true
+                                ),
+                                timestamp,
+                                computorPublicKeys: Array(NUMBER_OF_COMPUTORS),
+                              };
+
+                              let offset = COMPUTER_STATE_COMPUTOR_PUBLIC_KEYS_OFFSET;
+                              latestComputerState.computorPublicKeys.length = 0;
+                              while (
+                                offset <
+                                COMPUTER_STATE_COMPUTOR_PUBLIC_KEYS_OFFSET +
+                                  COMPUTER_STATE_COMPUTOR_PUBLIC_KEYS_LENGTH
+                              ) {
+                                latestComputerState.computorPublicKeys.push(
+                                  response.subarray(offset, (offset += PUBLIC_KEY_LENGTH))
+                                );
+                              }
+
+                              /**
+                               * Info event.
+                               *
+                               * @event Connection#info
+                               * @type {object}
+                               * @property {number} status - Indicates which of the 3 computors have provided the same tick and epoch.
+                               * 0 when offline, 3 when fully synced.
+                               * @property {number} epoch - Current epoch.
+                               * @property {number} tick - Current tick.
+                               */
+                              that.emit('info', {
+                                computerState: {
+                                  ...latestComputerState,
+                                  computorPublicKeys: [...latestComputerState.computorPublicKeys],
+                                },
+                                peers: sockets.map(function ({ ip, readyState }) {
+                                  return { ip, readyState };
+                                }),
+                              });
+                            }
+
+                            if (responses.length === NUMBER_OF_COMPUTORS) {
+                              latestComputerState.status = 0;
+                              computerStateResponsesByTimestamp.delete(responseTimestamp);
+                            }
+                          }
+                        }
+                      }
+                    }
+                    break;
+                  case WEBSOCKET_REQUEST_TYPES.GET_TRANSFER_STATUS: {
+                    for (
+                      let offset = 0;
+                      offset < response.length;
+                      offset += TRANSFER_STATUS_LENGTH
+                    ) {
+                      const digest = bytesToShiftedHex(
+                        response.subarray(
+                          offset + TRANSFER_STATUS_DIGEST_OFFSET,
+                          offset + TRANSFER_STATUS_DIGEST_OFFSET + TRANSFER_STATUS_DIGEST_LENGTH
+                        )
+                      ).toUpperCase();
+                      const responses = transferStatusResponsesByDigest.get(digest);
+                      if (responses !== undefined) {
+                        const epoch = responseView['getUint' + TRANSFER_STATUS_EPOCH_LENGTH * 8](
+                          offset + TRANSFER_STATUS_EPOCH_OFFSET,
+                          true
+                        );
+                        const tick = responseView['getUint' + TRANSFER_STATUS_TICK_LENGTH * 8](
+                          offset + TRANSFER_STATUS_TICK_OFFSET,
+                          true
+                        );
+                        console.log(
+                          epoch,
+                          tick,
+                          responseView['getUint' + TRANSFER_STATUS_COMPUTOR_INDEX_LENGTH * 8](
+                            offset + TRANSFER_STATUS_COMPUTOR_INDEX_OFFSET,
+                            true
+                          )
+                        );
+                        if (
+                          epoch === latestComputerState.epoch &&
+                          tick <= latestComputerState.tick
+                        ) {
+                          console.log('epoch/tick ok');
+                          const computorIndex = responseView[
+                            'getUint' + TRANSFER_STATUS_COMPUTOR_INDEX_LENGTH * 8
+                          ](offset + TRANSFER_STATUS_COMPUTOR_INDEX_OFFSET, true);
+
+                          const messageDigest = new Uint8Array(HASH_LENGTH);
+                          (await crypto).K12(
+                            response.subarray(
+                              offset + TRANSFER_STATUS_DIGEST_OFFSET,
+                              offset + TRANSFER_STATUS_SIGNATURE_OFFSET
+                            ),
+                            messageDigest,
+                            HASH_LENGTH
+                          );
+                          if (
+                            (await crypto).schnorrq.verify(
+                              latestComputerState.computorPublicKeys[computorIndex - 1],
+                              messageDigest,
+                              response.subarray(
+                                offset + TRANSFER_STATUS_SIGNATURE_OFFSET,
+                                offset +
+                                  TRANSFER_STATUS_SIGNATURE_OFFSET +
+                                  TRANSFER_STATUS_SIGNATURE_LENGTH
+                              )
+                            )
+                          ) {
+                            console.log('valid sig');
+                            responses[computorIndex - 1].push(
+                              response.subarray(offset, offset + TRANSFER_STATUS_LENGTH)
+                            );
+                            const transferStatusComparisonRightOffsets =
+                              transferStatusComparisonRightOffsetsByDigest.get(digest);
+                            const { status, rightOffset } = compareSignatures(
+                              responses[computorIndex - 1].map(function (response) {
+                                return response.subarray(
+                                  TRANSFER_STATUS_SIGNATURE_OFFSET,
+                                  TRANSFER_STATUS_SIGNATURE_OFFSET +
+                                    TRANSFER_STATUS_SIGNATURE_LENGTH
+                                );
+                              }),
+                              latestComputerState.status,
+                              transferStatusComparisonRightOffsets[computorIndex - 1] || 1
+                            );
+
+                            transferStatusComparisonRightOffsets[computorIndex - 1] = rightOffset;
+                            if (status >= 2) {
+                              if (false) {
+                                transferStatusResponsesByDigest.delete(digest);
+                                transferStatusComparisonRightOffsetsByDigest.delete(digest);
+                              }
+                            }
                           }
                         }
                       }
                     }
                   }
-                  break;
-                case WEBSOCKET_REQUEST_TYPES.GET_TRANSFER_STATUS: {
-                  console.log(this.i, response.length, response.slice(0, 4));
                 }
-              }
-              break;
-            case REQUEST_TYPES.EXCHANGE_PUBLIC_PEERS:
-              for (
-                let offset = HEADER_LENGTH;
-                offset < HEADER_LENGTH + NUMBER_OF_PUBLIC_PEERS * PUBLIC_PEER_LENGTH;
-                offset += PUBLIC_PEER_LENGTH
-              ) {
-                const peer = response.subarray(offset, offset + PUBLIC_PEER_LENGTH).join('.');
-                publicPeers.push(peer);
-              }
-              sockets.forEach(function ({ i }) {
-                if (sockets[i].readyState === 3) {
-                  const peer = publicPeers.shift();
-                  if (peer !== undefined) {
-                    setPeer(i, peer);
+                break;
+              case REQUEST_TYPES.EXCHANGE_PUBLIC_PEERS:
+                for (
+                  let offset = HEADER_LENGTH;
+                  offset < HEADER_LENGTH + NUMBER_OF_PUBLIC_PEERS * PUBLIC_PEER_LENGTH;
+                  offset += PUBLIC_PEER_LENGTH
+                ) {
+                  const peer = response.subarray(offset, offset + PUBLIC_PEER_LENGTH).join('.');
+                  publicPeers.push(peer);
+                }
+                sockets.forEach(function ({ i }) {
+                  if (sockets[i].readyState === 3) {
+                    const peer = publicPeers.shift();
+                    if (peer !== undefined) {
+                      setPeer(i, peer);
+                    }
                   }
-                }
-              });
+                });
+            }
+            offset += response.length;
           }
         };
 
@@ -564,18 +701,20 @@ export const connection = function ({
            * @event Connection#error
            * @param {event} event - WebSocket event.
            */
+          console.log(event);
           that.emit('error', event);
           this.close();
         };
 
         socket.onclose = function (event) {
+          console.log(event);
+          clearTimeout(timeout);
           /**
            * Close event. Emitted when a WebSocket connection closes.
            *
            * @event Connection#close
            * @param {event} event - WebSocket event.
            */
-          clearTimeout(timeout);
           that.emit('close', event);
           resolveOnOpenOrClose();
 

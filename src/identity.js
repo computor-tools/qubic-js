@@ -30,8 +30,7 @@ export const seedToBytes = function (seed) {
  * @returns {Uint8Array} Private key bytes.
  */
 export const privateKey = function (seed, index, K12) {
-  const seed2 = seedToBytes(seed);
-  const preimage = seed2.slice();
+  const preimage = seedToBytes(seed);
 
   while (index-- > 0) {
     for (let i = 0; i < preimage.length; i++) {

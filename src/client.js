@@ -1,6 +1,6 @@
 'use strict';
 
-import { connection as _connection } from './connection.js';
+import { connection as _connection, NUMBER_OF_COMPUTORS } from './connection.js';
 import { HASH_LENGTH, SIGNATURE_OFFSET, transfer, transferObject } from './transfer.js';
 import { seedToBytes, identity, privateKey } from './identity.js';
 import { crypto } from './crypto/index.js';
@@ -145,14 +145,20 @@ export const client = function ({
                     signedValue.slice(1 + SIGNATURE_OFFSET)
                   ) === 1
                 ) {
-                  hashesByIndex.set(parseInt(data.key), hash);
-                  transfers.push(await transferObject(signedValue.slice(1), hash));
-                  let latestRequestTimestamp = Date.now();
+                  const hash2 = new Uint8Array(HASH_LENGTH);
+                  const value2 = signedValue.slice(1);
+                  K12(value2, hash2, HASH_LENGTH);
+                  hashesByIndex.set(parseInt(data.key), hash2);
+                  transfers.push(await transferObject(signedValue.slice(1), hash2));
+                  let latestRequestTimestamp = Date.now() - NUMBER_OF_COMPUTORS * 100;
                   const infoListener = async function ({ computerState }) {
-                    if (computerState.status >= 2 && Date.now() - latestRequestTimestamp > 10000) {
+                    if (
+                      computerState.status >= 2 &&
+                      Date.now() - latestRequestTimestamp > NUMBER_OF_COMPUTORS * 100
+                    ) {
                       latestRequestTimestamp = Date.now();
                       console.log('GET_TRANSFER_STATUS');
-                      connection.getTransferStatus(bytesToShiftedHex(hash).toUpperCase());
+                      connection.getTransferStatus(bytesToShiftedHex(hash2).toUpperCase());
                     }
                   };
                   connection.addListener('info', infoListener);
@@ -254,7 +260,7 @@ export const client = function ({
           destination: params.destination,
           energy: params.energy,
         });
-        const { hashBytes, bytes } = transferObject;
+        const { hashBytes, hash, bytes } = transferObject;
 
         await AESCounter;
         counter++;
@@ -288,6 +294,20 @@ export const client = function ({
         that.emit('transfer', transferObject);
 
         connection.broadcastTransfer(bytes);
+
+        let latestRequestTimestamp = Date.now() - NUMBER_OF_COMPUTORS * 100;
+        const infoListener = async function ({ computerState }) {
+          if (
+            computerState.status >= 2 &&
+            Date.now() - latestRequestTimestamp > NUMBER_OF_COMPUTORS * 100
+          ) {
+            latestRequestTimestamp = Date.now();
+            console.log('GET_TRANSFER_STATUS');
+            connection.getTransferStatus(hash);
+          }
+        };
+        connection.addListener('info', infoListener);
+        infoListeners.push(infoListener);
       },
 
       /**

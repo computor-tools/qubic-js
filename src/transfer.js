@@ -26,6 +26,8 @@ export const TRANSFER_LENGTH = SIGNATURE_OFFSET + SIGNATURE_LENGTH;
 
 export const HASH_LENGTH = 32; // 256-bit output for 128-bit collision security (see 4.1 of https://eprint.iacr.org/2016/770.pdf).
 
+export const MIN_ENERGY_AMOUNT = 1000000n;
+
 /**
  * @typedef {object} TransferParams
  * @property {string} seed - Seed in 55 lowercase latin chars.
@@ -77,7 +79,7 @@ export const transfer = async function ({ seed, index, source, destination, ener
   if ((await verifyChecksum(destination)) === false) {
     throw new Error(`Invalid checksum: ${destination}`);
   }
-  if (BigInt(energy) < 1000000n) {
+  if (BigInt(energy) < MIN_ENERGY_AMOUNT) {
     throw new Error('Illegal energy.');
   }
 
@@ -89,35 +91,34 @@ export const transfer = async function ({ seed, index, source, destination, ener
   const publicKey = shiftedHexToBytes(source.slice(0, PUBLIC_KEY_LENGTH_IN_HEX).toLowerCase());
   transferAndSignature.set(publicKey, SOURCE_OFFSET);
 
-  if (destination !== undefined) {
-    transferAndSignature.set(
-      shiftedHexToBytes(destination.slice(0, PUBLIC_KEY_LENGTH_IN_HEX).toLowerCase()),
-      DESTINATION_OFFSET
-    );
-  }
+  transferAndSignature.set(
+    shiftedHexToBytes(destination.slice(0, PUBLIC_KEY_LENGTH_IN_HEX).toLowerCase()),
+    DESTINATION_OFFSET
+  );
 
   const ts = timestamp();
   transferAndSignatureView.setBigUint64(TIMESTAMP_OFFSET, ts, true);
 
-  if (destination !== undefined) {
-    transferAndSignatureView.setBigUint64(ENERGY_OFFSET, BigInt(energy), true);
-  }
+  transferAndSignatureView.setBigUint64(ENERGY_OFFSET, BigInt(energy), true);
 
   const { schnorrq, K12 } = await crypto;
-  const hash = new Uint8Array(HASH_LENGTH);
-
-  const transfer = transferAndSignature.slice(SOURCE_OFFSET, SIGNATURE_OFFSET);
-  transfer[0] = transfer[0] ^ 1;
-
-  K12(transfer, hash, HASH_LENGTH);
-
-  const signature = schnorrq.sign(privateKey(seed, index || 0, K12), publicKey, hash);
+  const digest = new Uint8Array(HASH_LENGTH);
+  transferAndSignature[0] ^= 1;
+  K12(transferAndSignature.subarray(SOURCE_OFFSET, SIGNATURE_OFFSET), digest, HASH_LENGTH);
+  transferAndSignature[0] ^= 1;
+  const signature = schnorrq.sign(privateKey(seed, index || 0, K12), publicKey, digest);
   transferAndSignature.set(signature, SIGNATURE_OFFSET);
+
+  const hashBytes = new Uint8Array(HASH_LENGTH);
+  K12(transferAndSignature, hashBytes, HASH_LENGTH);
+
+  Object.freeze(transferAndSignature);
+  Object.freeze(hashBytes);
 
   const transferObj = {
     bytes: transferAndSignature,
-    hashBytes: hash,
-    hash: bytesToShiftedHex(hash).toUpperCase(),
+    hashBytes,
+    hash: bytesToShiftedHex(hashBytes).toUpperCase(),
     source,
     destination,
     timestamp: ts,
@@ -135,7 +136,7 @@ export const transferObject = async function (transfer, hashBytes) {
 
   if (hashBytes === undefined) {
     hashBytes = new Uint8Array(HASH_LENGTH);
-    (await crypto).K12(transfer.slice(SOURCE_OFFSET, SIGNATURE_OFFSET), hashBytes, HASH_LENGTH);
+    (await crypto).K12(transfer.slice(), hashBytes, HASH_LENGTH);
   }
 
   return {
