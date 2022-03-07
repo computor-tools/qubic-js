@@ -6,7 +6,7 @@ import { crypto } from './crypto/index.js';
 import { bytesToShiftedHex, shiftedHexToBytes } from './utils/hex.js';
 import { PUBLIC_KEY_LENGTH } from './identity.js';
 import { timestamp } from './timestamp.js';
-import { HASH_LENGTH, SIGNATURE_LENGTH, TRANSFER_LENGTH } from './transfer.js';
+import { HASH_LENGTH, SIGNATURE_LENGTH, transfer, TRANSFER_LENGTH } from './transfer.js';
 
 export const NUMBER_OF_COMPUTORS = 26 * 26;
 const NUMBER_OF_CONNECTIONS = 3;
@@ -88,7 +88,13 @@ const TRANSFER_STATUS_SIGNATURE_OFFSET = TRANSFER_STATUS_TICK_OFFSET + TRANSFER_
 const TRANSFER_STATUS_SIGNATURE_LENGTH = SIGNATURE_LENGTH;
 const TRANSFER_STATUS_LENGTH = TRANSFER_STATUS_SIGNATURE_OFFSET + TRANSFER_STATUS_SIGNATURE_LENGTH;
 
-const compareSignatures = function (signatures, status, rightOffset, leftOffset = 0) {
+const compareSignatures = function (
+  signatures,
+  status,
+  rightOffset,
+  leftOffset = 0,
+  recompare = true
+) {
   while (rightOffset < signatures.length) {
     let equal = true;
     for (let j = 0; j < SIGNATURE_LENGTH; j++) {
@@ -102,8 +108,8 @@ const compareSignatures = function (signatures, status, rightOffset, leftOffset 
     }
     rightOffset++;
   }
-  if (signatures.length === NUMBER_OF_COMPUTORS && status === 1) {
-    return compareSignatures(signatures, status, 2, 1);
+  if (signatures.length === NUMBER_OF_CONNECTIONS && status === 1 && recompare) {
+    return compareSignatures(signatures, status, 2, 1, false);
   }
   return { status, rightOffset };
 };
@@ -152,7 +158,9 @@ export const connection = function ({
   let computerStateComparisonRightOffset = 1;
   let getComputerStateTimeouts = Array(NUMBER_OF_CONNECTIONS);
   let computerStateSynchronizationTimeout;
-  let transferStatusComparisonRightOffsetsByDigest = new Map();
+  const transferStatusComparisonStatusesByDigest = new Map();
+  const transferStatusComparisonRightOffsetsByDigest = new Map();
+
   const adminPublicKeyBytes = shiftedHexToBytes(adminPublicKey.toLowerCase());
   let isAdminPublicKeyNULL = true;
   for (let i = 0; i < adminPublicKeyBytes.length; i++) {
@@ -164,10 +172,13 @@ export const connection = function ({
   if (isAdminPublicKeyNULL) {
     throw new Error('Illegal admin public key.');
   }
+
   const publicPeers = [];
+
   const computerStateResponsesByTimestamp = new Map();
   const transferStatusResponsesByDigest = new Map();
-  const requestsToResendByDigest = new Map();
+  const transferStatusesByDigest = new Map();
+  const transferStatusRequestsToResendByDigest = new Map();
 
   const getComputerState = function () {
     const length =
@@ -254,11 +265,14 @@ export const connection = function ({
     } else {
       responses.fill([]);
     }
+    responses.requestTimestamp = timestamp();
+    responses.processedFlags = Array(NUMBER_OF_COMPUTORS).fill(false);
     const promise = new Promise(function (resolve) {
       responses.resolvers.push(resolve);
     });
     transferStatusResponsesByDigest.set(digest, responses);
-    transferStatusComparisonRightOffsetsByDigest.set(digest, Array(NUMBER_OF_COMPUTORS));
+    transferStatusComparisonStatusesByDigest.set(digest, Array(NUMBER_OF_COMPUTORS).fill(1));
+    transferStatusComparisonRightOffsetsByDigest.set(digest, Array(NUMBER_OF_COMPUTORS).fill(1));
 
     const request = new Uint8Array(TRANSFER_STATUS_REQUEST_LENGTH);
     const requestView = new DataView(request.buffer);
@@ -271,18 +285,18 @@ export const connection = function ({
     );
     requestView['setUint' + REQUEST_LENGTH * 8](REQUEST_OFFSET, REQUEST_TYPES.WEBSOCKET, true);
     request[REQUEST_TYPE_OFFSET] = WEBSOCKET_REQUEST_TYPES.GET_TRANSFER_STATUS;
+    requestView.setBigUint64(REQUEST_TIMESTAMP_OFFSET, responses.requestTimestamp, true);
 
     request.set(shiftedHexToBytes(digest.toLowerCase()), TRANSFER_STATUS_REQUEST_DIGEST_OFFSET);
 
     const requestsToResend = [];
-    for (let i = 1; i <= NUMBER_OF_COMPUTORS; i++) {
+    for (let i = 0; i < NUMBER_OF_COMPUTORS; i++) {
       await new Promise(function (resolve) {
         setTimeout(function () {
           resolve();
         }, 100);
       });
 
-      requestView.setBigUint64(REQUEST_TIMESTAMP_OFFSET, timestamp(), true);
       requestView['setUint' + TRANSFER_STATUS_REQUEST_COMPUTOR_INDEX_LENGTH * 8](
         TRANSFER_STATUS_REQUEST_COMPUTOR_INDEX_OFFSET,
         i,
@@ -300,7 +314,7 @@ export const connection = function ({
         });
       });
     }
-    requestsToResendByDigest.set(digest, requestsToResend);
+    transferStatusRequestsToResendByDigest.set(digest, requestsToResend);
 
     return promise;
   };
@@ -420,19 +434,13 @@ export const connection = function ({
           exchangePublicPeers(socket);
           resolveOnOpenOrClose();
 
-          requestsToResendByDigest.forEach(async function (requests) {
+          transferStatusRequestsToResendByDigest.forEach(async function (requests) {
             requests.forEach(async function (request) {
               await new Promise(function (resolve) {
                 setTimeout(function () {
                   resolve();
                 }, 100);
               });
-              const requestView = new DataView(request.buffer);
-              request.set(
-                new Uint8Array(REQUEST_TIMESTAMP_LENGTH).fill(0),
-                REQUEST_TIMESTAMP_OFFSET
-              );
-              requestView.setBigUint64(REQUEST_TIMESTAMP_OFFSET, timestamp(), true);
               if (socket.readyState === 1) {
                 socket.send(request.buffer);
               }
@@ -491,7 +499,7 @@ export const connection = function ({
                           const responses =
                             computerStateResponsesByTimestamp.get(responseTimestamp);
                           if (responses !== undefined) {
-                            responses.push(response);
+                            responses[socket.i] = response;
 
                             if (responses.length === 1) {
                               latestComputerState.status = 1;
@@ -510,12 +518,17 @@ export const connection = function ({
                             }
 
                             const { status, rightOffset } = compareSignatures(
-                              responses.map(function (response) {
-                                return response.subarray(
-                                  COMPUTER_STATE_SIGNATURE_OFFSET,
-                                  COMPUTER_STATE_SIGNATURE_OFFSET + COMPUTER_STATE_SIGNATURE_LENGTH
-                                );
-                              }),
+                              responses
+                                .filter(function (response) {
+                                  return response !== undefined;
+                                })
+                                .map(function (response) {
+                                  return response.subarray(
+                                    COMPUTER_STATE_SIGNATURE_OFFSET,
+                                    COMPUTER_STATE_SIGNATURE_OFFSET +
+                                      COMPUTER_STATE_SIGNATURE_LENGTH
+                                  );
+                                }),
                               latestComputerState.status,
                               computerStateComparisonRightOffset
                             );
@@ -593,76 +606,148 @@ export const connection = function ({
                         )
                       ).toUpperCase();
                       const responses = transferStatusResponsesByDigest.get(digest);
-                      if (responses !== undefined) {
-                        const epoch = responseView['getUint' + TRANSFER_STATUS_EPOCH_LENGTH * 8](
-                          offset + TRANSFER_STATUS_EPOCH_OFFSET,
-                          true
-                        );
-                        const tick = responseView['getUint' + TRANSFER_STATUS_TICK_LENGTH * 8](
-                          offset + TRANSFER_STATUS_TICK_OFFSET,
-                          true
-                        );
-                        console.log(
-                          epoch,
-                          tick,
-                          responseView['getUint' + TRANSFER_STATUS_COMPUTOR_INDEX_LENGTH * 8](
-                            offset + TRANSFER_STATUS_COMPUTOR_INDEX_OFFSET,
+                      const ts = responseView.getBigUint64(RESPONSE_TIMESTAMP_OFFSET, true);
+                      if (responses !== undefined && responses.requestTimestamp === ts) {
+                        const computorIndex = responseView[
+                          'getUint' + TRANSFER_STATUS_COMPUTOR_INDEX_LENGTH * 8
+                        ](offset + TRANSFER_STATUS_COMPUTOR_INDEX_OFFSET, true);
+                        if (responses[computorIndex].length <= 3) {
+                          const epoch = responseView['getUint' + TRANSFER_STATUS_EPOCH_LENGTH * 8](
+                            offset + TRANSFER_STATUS_EPOCH_OFFSET,
                             true
-                          )
-                        );
-                        if (
-                          epoch === latestComputerState.epoch &&
-                          tick <= latestComputerState.tick
-                        ) {
-                          console.log('epoch/tick ok');
-                          const computorIndex = responseView[
-                            'getUint' + TRANSFER_STATUS_COMPUTOR_INDEX_LENGTH * 8
-                          ](offset + TRANSFER_STATUS_COMPUTOR_INDEX_OFFSET, true);
-
-                          const messageDigest = new Uint8Array(HASH_LENGTH);
-                          (await crypto).K12(
-                            response.subarray(
-                              offset + TRANSFER_STATUS_DIGEST_OFFSET,
-                              offset + TRANSFER_STATUS_SIGNATURE_OFFSET
-                            ),
-                            messageDigest,
-                            HASH_LENGTH
+                          );
+                          const tick = responseView['getUint' + TRANSFER_STATUS_TICK_LENGTH * 8](
+                            offset + TRANSFER_STATUS_TICK_OFFSET,
+                            true
                           );
                           if (
-                            (await crypto).schnorrq.verify(
-                              latestComputerState.computorPublicKeys[computorIndex - 1],
-                              messageDigest,
-                              response.subarray(
-                                offset + TRANSFER_STATUS_SIGNATURE_OFFSET,
-                                offset +
-                                  TRANSFER_STATUS_SIGNATURE_OFFSET +
-                                  TRANSFER_STATUS_SIGNATURE_LENGTH
-                              )
-                            )
+                            epoch === latestComputerState.epoch &&
+                            tick <= latestComputerState.tick
                           ) {
-                            console.log('valid sig');
-                            responses[computorIndex - 1].push(
-                              response.subarray(offset, offset + TRANSFER_STATUS_LENGTH)
+                            const messageDigest = new Uint8Array(HASH_LENGTH);
+                            response[offset + TRANSFER_STATUS_DIGEST_OFFSET] ^= 3;
+                            (await crypto).K12(
+                              response.subarray(
+                                offset + TRANSFER_STATUS_DIGEST_OFFSET,
+                                offset + TRANSFER_STATUS_SIGNATURE_OFFSET
+                              ),
+                              messageDigest,
+                              HASH_LENGTH
                             );
-                            const transferStatusComparisonRightOffsets =
-                              transferStatusComparisonRightOffsetsByDigest.get(digest);
-                            const { status, rightOffset } = compareSignatures(
-                              responses[computorIndex - 1].map(function (response) {
-                                return response.subarray(
-                                  TRANSFER_STATUS_SIGNATURE_OFFSET,
-                                  TRANSFER_STATUS_SIGNATURE_OFFSET +
+                            response[offset + TRANSFER_STATUS_DIGEST_OFFSET] ^= 3;
+                            if (
+                              (await crypto).schnorrq.verify(
+                                latestComputerState.computorPublicKeys[computorIndex],
+                                messageDigest,
+                                response.subarray(
+                                  offset + TRANSFER_STATUS_SIGNATURE_OFFSET,
+                                  offset +
+                                    TRANSFER_STATUS_SIGNATURE_OFFSET +
                                     TRANSFER_STATUS_SIGNATURE_LENGTH
-                                );
-                              }),
-                              latestComputerState.status,
-                              transferStatusComparisonRightOffsets[computorIndex - 1] || 1
-                            );
+                                )
+                              ) === 1
+                            ) {
+                              responses[computorIndex][socket.i] = response.subarray(
+                                offset,
+                                offset + TRANSFER_STATUS_LENGTH
+                              );
+                              let transferStatusComparisonRightOffsets =
+                                transferStatusComparisonRightOffsetsByDigest.get(digest);
+                              let transferStatusComparisonStatus =
+                                transferStatusComparisonStatusesByDigest.get(digest);
+                              const { status, rightOffset } = compareSignatures(
+                                responses[computorIndex]
+                                  .filter(function (response) {
+                                    return response !== undefined;
+                                  })
+                                  .map(function (response) {
+                                    return response.subarray(
+                                      TRANSFER_STATUS_SIGNATURE_OFFSET,
+                                      TRANSFER_STATUS_SIGNATURE_OFFSET +
+                                        TRANSFER_STATUS_SIGNATURE_LENGTH
+                                    );
+                                  }),
+                                transferStatusComparisonStatus[computorIndex],
+                                transferStatusComparisonRightOffsets[computorIndex]
+                              );
 
-                            transferStatusComparisonRightOffsets[computorIndex - 1] = rightOffset;
-                            if (status >= 2) {
-                              if (false) {
-                                transferStatusResponsesByDigest.delete(digest);
-                                transferStatusComparisonRightOffsetsByDigest.delete(digest);
+                              transferStatusComparisonStatus[computorIndex] = status;
+                              transferStatusComparisonRightOffsets[computorIndex] = rightOffset;
+
+                              if (
+                                status >= 2 &&
+                                responses.processedFlags[computorIndex] === false &&
+                                (responses.processedFlags[computorIndex] = true)
+                              ) {
+                                responses[computorIndex] = [];
+                                let statuses = transferStatusesByDigest.get(digest);
+                                if (statuses === undefined) {
+                                  statuses = Array(NUMBER_OF_COMPUTORS);
+                                  transferStatusesByDigest.set(digest, statuses);
+                                }
+                                if (statuses[computorIndex] === undefined) {
+                                  statuses[computorIndex] = Array(NUMBER_OF_COMPUTORS);
+                                }
+
+                                for (let i = 0; i < TRANSFER_STATUS_STATUS_LENGTH; i++) {
+                                  for (let j = 0; j < 8; j += 2) {
+                                    let transferStatus = 0;
+                                    if (
+                                      ((response[offset + TRANSFER_STATUS_STATUS_OFFSET + i] >>
+                                        (8 - (j + 1))) &
+                                        0x0001) ===
+                                      0
+                                    ) {
+                                      if (
+                                        ((response[offset + TRANSFER_STATUS_STATUS_OFFSET + i] >>
+                                          (8 - (j + 2))) &
+                                          0x0001) ===
+                                        1
+                                      ) {
+                                        transferStatus = 1;
+                                      }
+                                    } else if (
+                                      ((response[offset + TRANSFER_STATUS_STATUS_OFFSET + i] >>
+                                        (8 - (j + 2))) &
+                                        0x0001) ===
+                                      0
+                                    ) {
+                                      transferStatus = 2;
+                                    }
+                                    statuses[computorIndex][i * 4 + j / 2] = transferStatus;
+                                  }
+                                }
+
+                                const report = [0, 0, 0];
+
+                                for (let i = 0; i < NUMBER_OF_COMPUTORS; i++) {
+                                  for (let j = 0; j < NUMBER_OF_COMPUTORS; j++) {
+                                    if (i !== j) {
+                                      if (
+                                        statuses[i] !== undefined &&
+                                        statuses[i][j] !== undefined
+                                      ) {
+                                        report[statuses[i][j]] += 1;
+                                      } else {
+                                        report[0] += 1;
+                                      }
+                                    }
+                                  }
+                                }
+
+                                that.emit('transferStatus', {
+                                  hash: digest,
+                                  unseen: Math.floor(report[0] / (NUMBER_OF_COMPUTORS - 1)),
+                                  seen: Math.floor(report[1] / (NUMBER_OF_COMPUTORS - 1)),
+                                  processed: Math.floor(report[2] / (NUMBER_OF_COMPUTORS - 1)),
+                                });
+
+                                if (Math.floor(report[2] / (NUMBER_OF_COMPUTORS - 1)) >= 451) {
+                                  transferStatusResponsesByDigest.delete(digest);
+                                  transferStatusComparisonStatusesByDigest.delete(digest);
+                                  transferStatusComparisonRightOffsetsByDigest.delete(digest);
+                                  transferStatusesByDigest.delete(digest);
+                                }
                               }
                             }
                           }
@@ -701,13 +786,11 @@ export const connection = function ({
            * @event Connection#error
            * @param {event} event - WebSocket event.
            */
-          console.log(event);
           that.emit('error', event);
           this.close();
         };
 
         socket.onclose = function (event) {
-          console.log(event);
           clearTimeout(timeout);
           /**
            * Close event. Emitted when a WebSocket connection closes.

@@ -1,7 +1,13 @@
 'use strict';
 
 import { connection as _connection, NUMBER_OF_COMPUTORS } from './connection.js';
-import { HASH_LENGTH, SIGNATURE_OFFSET, transfer, transferObject } from './transfer.js';
+import {
+  TIMESTAMP_OFFSET,
+  HASH_LENGTH,
+  SIGNATURE_OFFSET,
+  transfer,
+  transferObject,
+} from './transfer.js';
 import { seedToBytes, identity, privateKey } from './identity.js';
 import { crypto } from './crypto/index.js';
 import level from 'level';
@@ -150,14 +156,15 @@ export const client = function ({
                   K12(value2, hash2, HASH_LENGTH);
                   hashesByIndex.set(parseInt(data.key), hash2);
                   transfers.push(await transferObject(signedValue.slice(1), hash2));
-                  let latestRequestTimestamp = Date.now() - NUMBER_OF_COMPUTORS * 100;
+                  let latestRequestTimestamp = Date.now() - NUMBER_OF_COMPUTORS * 100 * 2;
                   const infoListener = async function ({ computerState }) {
                     if (
                       computerState.status >= 2 &&
-                      Date.now() - latestRequestTimestamp > NUMBER_OF_COMPUTORS * 100
+                      Date.now() - latestRequestTimestamp > NUMBER_OF_COMPUTORS * 100 * 2
                     ) {
                       latestRequestTimestamp = Date.now();
                       console.log('GET_TRANSFER_STATUS');
+                      connection.broadcastTransfer(signedValue.slice(1));
                       connection.getTransferStatus(bytesToShiftedHex(hash2).toUpperCase());
                     }
                   };
@@ -295,11 +302,11 @@ export const client = function ({
 
         connection.broadcastTransfer(bytes);
 
-        let latestRequestTimestamp = Date.now() - NUMBER_OF_COMPUTORS * 100;
+        let latestRequestTimestamp = Date.now() - NUMBER_OF_COMPUTORS * 100 * 2;
         const infoListener = async function ({ computerState }) {
           if (
             computerState.status >= 2 &&
-            Date.now() - latestRequestTimestamp > NUMBER_OF_COMPUTORS * 100
+            Date.now() - latestRequestTimestamp > NUMBER_OF_COMPUTORS * 100 * 2
           ) {
             latestRequestTimestamp = Date.now();
             console.log('GET_TRANSFER_STATUS');
