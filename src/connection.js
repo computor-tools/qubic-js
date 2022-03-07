@@ -88,17 +88,17 @@ const TRANSFER_STATUS_SIGNATURE_OFFSET = TRANSFER_STATUS_TICK_OFFSET + TRANSFER_
 const TRANSFER_STATUS_SIGNATURE_LENGTH = SIGNATURE_LENGTH;
 const TRANSFER_STATUS_LENGTH = TRANSFER_STATUS_SIGNATURE_OFFSET + TRANSFER_STATUS_SIGNATURE_LENGTH;
 
-const compareSignatures = function (
-  signatures,
+const compareResponses = function (
+  responses,
   status,
   rightOffset,
   leftOffset = 0,
   recompare = true
 ) {
-  while (rightOffset < signatures.length) {
+  while (rightOffset < responses.length) {
     let equal = true;
     for (let j = 0; j < SIGNATURE_LENGTH; j++) {
-      if (signatures[leftOffset][j] !== signatures[rightOffset][j]) {
+      if (responses[leftOffset][j] !== responses[rightOffset][j]) {
         equal = false;
         break;
       }
@@ -108,8 +108,8 @@ const compareSignatures = function (
     }
     rightOffset++;
   }
-  if (signatures.length === NUMBER_OF_CONNECTIONS && status === 1 && recompare) {
-    return compareSignatures(signatures, status, 2, 1, false);
+  if (responses.length === NUMBER_OF_CONNECTIONS && status === 1 && recompare) {
+    return compareResponses(responses, status, 2, 1, false);
   }
   return { status, rightOffset };
 };
@@ -517,7 +517,7 @@ export const connection = function ({
                               return;
                             }
 
-                            const { status, rightOffset } = compareSignatures(
+                            const { status, rightOffset } = compareResponses(
                               responses
                                 .filter(function (response) {
                                   return response !== undefined;
@@ -611,144 +611,141 @@ export const connection = function ({
                         const computorIndex = responseView[
                           'getUint' + TRANSFER_STATUS_COMPUTOR_INDEX_LENGTH * 8
                         ](offset + TRANSFER_STATUS_COMPUTOR_INDEX_OFFSET, true);
-                        if (responses[computorIndex].length <= 3) {
-                          const epoch = responseView['getUint' + TRANSFER_STATUS_EPOCH_LENGTH * 8](
-                            offset + TRANSFER_STATUS_EPOCH_OFFSET,
-                            true
+                        const epoch = responseView['getUint' + TRANSFER_STATUS_EPOCH_LENGTH * 8](
+                          offset + TRANSFER_STATUS_EPOCH_OFFSET,
+                          true
+                        );
+                        const tick = responseView['getUint' + TRANSFER_STATUS_TICK_LENGTH * 8](
+                          offset + TRANSFER_STATUS_TICK_OFFSET,
+                          true
+                        );
+                        if (
+                          epoch === latestComputerState.epoch &&
+                          tick <= latestComputerState.tick
+                        ) {
+                          const messageDigest = new Uint8Array(HASH_LENGTH);
+                          response[offset + TRANSFER_STATUS_DIGEST_OFFSET] ^= 3;
+                          (await crypto).K12(
+                            response.subarray(
+                              offset + TRANSFER_STATUS_DIGEST_OFFSET,
+                              offset + TRANSFER_STATUS_SIGNATURE_OFFSET
+                            ),
+                            messageDigest,
+                            HASH_LENGTH
                           );
-                          const tick = responseView['getUint' + TRANSFER_STATUS_TICK_LENGTH * 8](
-                            offset + TRANSFER_STATUS_TICK_OFFSET,
-                            true
-                          );
+                          response[offset + TRANSFER_STATUS_DIGEST_OFFSET] ^= 3;
                           if (
-                            epoch === latestComputerState.epoch &&
-                            tick <= latestComputerState.tick
-                          ) {
-                            const messageDigest = new Uint8Array(HASH_LENGTH);
-                            response[offset + TRANSFER_STATUS_DIGEST_OFFSET] ^= 3;
-                            (await crypto).K12(
-                              response.subarray(
-                                offset + TRANSFER_STATUS_DIGEST_OFFSET,
-                                offset + TRANSFER_STATUS_SIGNATURE_OFFSET
-                              ),
+                            (await crypto).schnorrq.verify(
+                              latestComputerState.computorPublicKeys[computorIndex],
                               messageDigest,
-                              HASH_LENGTH
+                              response.subarray(
+                                offset + TRANSFER_STATUS_SIGNATURE_OFFSET,
+                                offset +
+                                  TRANSFER_STATUS_SIGNATURE_OFFSET +
+                                  TRANSFER_STATUS_SIGNATURE_LENGTH
+                              )
+                            ) === 1
+                          ) {
+                            responses[computorIndex][socket.i] = response.subarray(
+                              offset,
+                              offset + TRANSFER_STATUS_LENGTH
                             );
-                            response[offset + TRANSFER_STATUS_DIGEST_OFFSET] ^= 3;
+                            let transferStatusComparisonRightOffsets =
+                              transferStatusComparisonRightOffsetsByDigest.get(digest);
+                            let transferStatusComparisonStatus =
+                              transferStatusComparisonStatusesByDigest.get(digest);
+                            const { status, rightOffset } = compareResponses(
+                              responses[computorIndex]
+                                .filter(function (response) {
+                                  return response !== undefined;
+                                })
+                                .map(function (response) {
+                                  return response.subarray(
+                                    TRANSFER_STATUS_STATUS_OFFSET,
+                                    TRANSFER_STATUS_STATUS_OFFSET + TRANSFER_STATUS_STATUS_LENGTH
+                                  );
+                                }),
+                              transferStatusComparisonStatus[computorIndex],
+                              transferStatusComparisonRightOffsets[computorIndex]
+                            );
+
+                            transferStatusComparisonStatus[computorIndex] = status;
+                            transferStatusComparisonRightOffsets[computorIndex] = rightOffset;
+
                             if (
-                              (await crypto).schnorrq.verify(
-                                latestComputerState.computorPublicKeys[computorIndex],
-                                messageDigest,
-                                response.subarray(
-                                  offset + TRANSFER_STATUS_SIGNATURE_OFFSET,
-                                  offset +
-                                    TRANSFER_STATUS_SIGNATURE_OFFSET +
-                                    TRANSFER_STATUS_SIGNATURE_LENGTH
-                                )
-                              ) === 1
+                              status >= 2 &&
+                              responses.processedFlags[computorIndex] === false &&
+                              (responses.processedFlags[computorIndex] = true)
                             ) {
-                              responses[computorIndex][socket.i] = response.subarray(
-                                offset,
-                                offset + TRANSFER_STATUS_LENGTH
-                              );
-                              let transferStatusComparisonRightOffsets =
-                                transferStatusComparisonRightOffsetsByDigest.get(digest);
-                              let transferStatusComparisonStatus =
-                                transferStatusComparisonStatusesByDigest.get(digest);
-                              const { status, rightOffset } = compareSignatures(
-                                responses[computorIndex]
-                                  .filter(function (response) {
-                                    return response !== undefined;
-                                  })
-                                  .map(function (response) {
-                                    return response.subarray(
-                                      TRANSFER_STATUS_SIGNATURE_OFFSET,
-                                      TRANSFER_STATUS_SIGNATURE_OFFSET +
-                                        TRANSFER_STATUS_SIGNATURE_LENGTH
-                                    );
-                                  }),
-                                transferStatusComparisonStatus[computorIndex],
-                                transferStatusComparisonRightOffsets[computorIndex]
-                              );
+                              let statuses = transferStatusesByDigest.get(digest);
+                              if (statuses === undefined) {
+                                statuses = Array(NUMBER_OF_COMPUTORS);
+                                transferStatusesByDigest.set(digest, statuses);
+                              }
+                              if (statuses[computorIndex] === undefined) {
+                                statuses[computorIndex] = Array(NUMBER_OF_COMPUTORS);
+                              }
 
-                              transferStatusComparisonStatus[computorIndex] = status;
-                              transferStatusComparisonRightOffsets[computorIndex] = rightOffset;
-
-                              if (
-                                status >= 2 &&
-                                responses.processedFlags[computorIndex] === false &&
-                                (responses.processedFlags[computorIndex] = true)
-                              ) {
-                                responses[computorIndex] = [];
-                                let statuses = transferStatusesByDigest.get(digest);
-                                if (statuses === undefined) {
-                                  statuses = Array(NUMBER_OF_COMPUTORS);
-                                  transferStatusesByDigest.set(digest, statuses);
-                                }
-                                if (statuses[computorIndex] === undefined) {
-                                  statuses[computorIndex] = Array(NUMBER_OF_COMPUTORS);
-                                }
-
-                                for (let i = 0; i < TRANSFER_STATUS_STATUS_LENGTH; i++) {
-                                  for (let j = 0; j < 8; j += 2) {
-                                    let transferStatus = 0;
+                              for (let i = 0; i < TRANSFER_STATUS_STATUS_LENGTH; i++) {
+                                for (let j = 0; j < 8; j += 2) {
+                                  let transferStatus = 0; // unseen
+                                  if (
+                                    ((response[offset + TRANSFER_STATUS_STATUS_OFFSET + i] >>
+                                      (8 - (j + 1))) &
+                                      0x0001) ===
+                                    0
+                                  ) {
                                     if (
-                                      ((response[offset + TRANSFER_STATUS_STATUS_OFFSET + i] >>
-                                        (8 - (j + 1))) &
-                                        0x0001) ===
-                                      0
-                                    ) {
-                                      if (
-                                        ((response[offset + TRANSFER_STATUS_STATUS_OFFSET + i] >>
-                                          (8 - (j + 2))) &
-                                          0x0001) ===
-                                        1
-                                      ) {
-                                        transferStatus = 1;
-                                      }
-                                    } else if (
                                       ((response[offset + TRANSFER_STATUS_STATUS_OFFSET + i] >>
                                         (8 - (j + 2))) &
                                         0x0001) ===
-                                      0
+                                      1
                                     ) {
-                                      transferStatus = 2;
+                                      // 01 - seen
+                                      transferStatus = 1;
                                     }
-                                    statuses[computorIndex][i * 4 + j / 2] = transferStatus;
+                                  } else if (
+                                    ((response[offset + TRANSFER_STATUS_STATUS_OFFSET + i] >>
+                                      (8 - (j + 2))) &
+                                      0x0001) ===
+                                    0
+                                  ) {
+                                    // 10 - processed
+                                    transferStatus = 2;
                                   }
-                                }
-
-                                const report = [0, 0, 0];
-
-                                for (let i = 0; i < NUMBER_OF_COMPUTORS; i++) {
-                                  for (let j = 0; j < NUMBER_OF_COMPUTORS; j++) {
-                                    if (i !== j) {
-                                      if (
-                                        statuses[i] !== undefined &&
-                                        statuses[i][j] !== undefined
-                                      ) {
-                                        report[statuses[i][j]] += 1;
-                                      } else {
-                                        report[0] += 1;
-                                      }
-                                    }
-                                  }
-                                }
-
-                                that.emit('transferStatus', {
-                                  hash: digest,
-                                  unseen: Math.floor(report[0] / (NUMBER_OF_COMPUTORS - 1)),
-                                  seen: Math.floor(report[1] / (NUMBER_OF_COMPUTORS - 1)),
-                                  processed: Math.floor(report[2] / (NUMBER_OF_COMPUTORS - 1)),
-                                });
-
-                                if (Math.floor(report[2] / (NUMBER_OF_COMPUTORS - 1)) >= 451) {
-                                  transferStatusResponsesByDigest.delete(digest);
-                                  transferStatusComparisonStatusesByDigest.delete(digest);
-                                  transferStatusComparisonRightOffsetsByDigest.delete(digest);
-                                  transferStatusesByDigest.delete(digest);
+                                  statuses[computorIndex][i * 4 + j / 2] = transferStatus;
                                 }
                               }
+
+                              const report = [0, 0, 0];
+
+                              for (let i = 0; i < NUMBER_OF_COMPUTORS; i++) {
+                                for (let j = 0; j < NUMBER_OF_COMPUTORS; j++) {
+                                  if (i !== j) {
+                                    if (statuses[i] !== undefined && statuses[i][j] !== undefined) {
+                                      report[statuses[i][j]] += 1;
+                                    } else {
+                                      report[0] += 1;
+                                    }
+                                  }
+                                }
+                              }
+
+                              that.emit('transferStatus', {
+                                hash: digest,
+                                unseen: Math.floor(report[0] / (NUMBER_OF_COMPUTORS - 1)),
+                                seen: Math.floor(report[1] / (NUMBER_OF_COMPUTORS - 1)),
+                                processed: Math.floor(report[2] / (NUMBER_OF_COMPUTORS - 1)),
+                              });
+
+                              if (Math.floor(report[2] / (NUMBER_OF_COMPUTORS - 1)) >= 451) {
+                                transferStatusResponsesByDigest.delete(digest);
+                                transferStatusComparisonStatusesByDigest.delete(digest);
+                                transferStatusComparisonRightOffsetsByDigest.delete(digest);
+                                transferStatusesByDigest.delete(digest);
+                              }
+
+                              responses[computorIndex] = [];
                             }
                           }
                         }
