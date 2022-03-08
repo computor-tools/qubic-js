@@ -6,7 +6,7 @@ import { crypto } from './crypto/index.js';
 import { bytesToShiftedHex, shiftedHexToBytes } from './utils/hex.js';
 import { PUBLIC_KEY_LENGTH } from './identity.js';
 import { timestamp } from './timestamp.js';
-import { HASH_LENGTH, SIGNATURE_LENGTH, transfer, TRANSFER_LENGTH } from './transfer.js';
+import { HASH_LENGTH, SIGNATURE_LENGTH, TRANSFER_LENGTH } from './transfer.js';
 
 export const NUMBER_OF_COMPUTORS = 26 * 26;
 const NUMBER_OF_CONNECTIONS = 3;
@@ -52,7 +52,8 @@ const RESPONSE_TIMESTAMP_OFFSET =
   RESPONSE_TYPE_OFFSET + RESPONSE_TYPE_LENGTH + RESPONSE_TYPE_PADDING;
 const RESPONSE_TIMESTAMP_LENGTH = 8;
 
-const COMPUTER_STATE_COMPUTOR_INDEX_OFFSET = RESPONSE_TIMESTAMP_OFFSET + RESPONSE_TIMESTAMP_LENGTH;
+export const COMPUTER_STATE_COMPUTOR_INDEX_OFFSET =
+  RESPONSE_TIMESTAMP_OFFSET + RESPONSE_TIMESTAMP_LENGTH;
 const COMPUTER_STATE_COMPUTOR_INDEX_LENGTH = 2;
 const COMPUTER_STATE_EPOCH_OFFSET =
   COMPUTER_STATE_COMPUTOR_INDEX_OFFSET + COMPUTER_STATE_COMPUTOR_INDEX_LENGTH;
@@ -61,31 +62,33 @@ const COMPUTER_STATE_TICK_OFFSET = COMPUTER_STATE_EPOCH_OFFSET + COMPUTER_STATE_
 const COMPUTER_STATE_TICK_LENGTH = 4;
 const COMPUTER_STATE_TIMESTAMP_OFFSET = COMPUTER_STATE_TICK_OFFSET + COMPUTER_STATE_TICK_LENGTH;
 const COMPUTER_STATE_TIMESTAMP_LENGTH = 8;
-const COMPUTER_STATE_COMPUTOR_PUBLIC_KEYS_OFFSET =
+export const COMPUTER_STATE_COMPUTOR_PUBLIC_KEYS_OFFSET =
   COMPUTER_STATE_TIMESTAMP_OFFSET + COMPUTER_STATE_TIMESTAMP_LENGTH;
 const COMPUTER_STATE_COMPUTOR_PUBLIC_KEYS_LENGTH = NUMBER_OF_COMPUTORS * PUBLIC_KEY_LENGTH;
-const COMPUTER_STATE_SIGNATURE_OFFSET =
+export const COMPUTER_STATE_SIGNATURE_OFFSET =
   COMPUTER_STATE_COMPUTOR_PUBLIC_KEYS_OFFSET + COMPUTER_STATE_COMPUTOR_PUBLIC_KEYS_LENGTH;
-const COMPUTER_STATE_SIGNATURE_LENGTH = SIGNATURE_LENGTH;
+export const COMPUTER_STATE_SIGNATURE_LENGTH = SIGNATURE_LENGTH;
 
 const PUBLIC_PEER_LENGTH = 4;
 const NUMBER_OF_PUBLIC_PEERS = 4;
 
-const TRANSFER_STATUS_DIGEST_OFFSET = RESPONSE_TIMESTAMP_OFFSET + RESPONSE_TIMESTAMP_LENGTH;
+export const TRANSFER_STATUS_DIGEST_OFFSET = RESPONSE_TIMESTAMP_OFFSET + RESPONSE_TIMESTAMP_LENGTH;
 const TRANSFER_STATUS_DIGEST_LENGTH = HASH_LENGTH;
-const TRANSFER_STATUS_STATUS_OFFSET = TRANSFER_STATUS_DIGEST_OFFSET + TRANSFER_STATUS_DIGEST_LENGTH;
-const TRANSFER_STATUS_STATUS_LENGTH = (NUMBER_OF_COMPUTORS * 2) / 8;
+export const TRANSFER_STATUS_STATUS_OFFSET =
+  TRANSFER_STATUS_DIGEST_OFFSET + TRANSFER_STATUS_DIGEST_LENGTH;
+export const TRANSFER_STATUS_STATUS_LENGTH = (NUMBER_OF_COMPUTORS * 2) / 8;
 const TRANSFER_STATUS_STATUS_PADDING = 3;
-const TRANSFER_STATUS_COMPUTOR_INDEX_OFFSET =
+export const TRANSFER_STATUS_COMPUTOR_INDEX_OFFSET =
   TRANSFER_STATUS_STATUS_OFFSET + TRANSFER_STATUS_STATUS_LENGTH + TRANSFER_STATUS_STATUS_PADDING;
-const TRANSFER_STATUS_COMPUTOR_INDEX_LENGTH = 2;
+export const TRANSFER_STATUS_COMPUTOR_INDEX_LENGTH = 2;
 const TRANSFER_STATUS_EPOCH_OFFSET =
   TRANSFER_STATUS_COMPUTOR_INDEX_OFFSET + TRANSFER_STATUS_COMPUTOR_INDEX_LENGTH;
 const TRANSFER_STATUS_EPOCH_LENGTH = 2;
 const TRANSFER_STATUS_TICK_OFFSET = TRANSFER_STATUS_EPOCH_OFFSET + TRANSFER_STATUS_EPOCH_LENGTH;
 const TRANSFER_STATUS_TICK_LENGTH = 4;
-const TRANSFER_STATUS_SIGNATURE_OFFSET = TRANSFER_STATUS_TICK_OFFSET + TRANSFER_STATUS_TICK_LENGTH;
-const TRANSFER_STATUS_SIGNATURE_LENGTH = SIGNATURE_LENGTH;
+export const TRANSFER_STATUS_SIGNATURE_OFFSET =
+  TRANSFER_STATUS_TICK_OFFSET + TRANSFER_STATUS_TICK_LENGTH;
+export const TRANSFER_STATUS_SIGNATURE_LENGTH = SIGNATURE_LENGTH;
 const TRANSFER_STATUS_LENGTH = TRANSFER_STATUS_SIGNATURE_OFFSET + TRANSFER_STATUS_SIGNATURE_LENGTH;
 
 const compareResponses = function (
@@ -158,8 +161,6 @@ export const connection = function ({
   let computerStateComparisonRightOffset = 1;
   let getComputerStateTimeouts = Array(NUMBER_OF_CONNECTIONS);
   let computerStateSynchronizationTimeout;
-  const transferStatusComparisonStatusesByDigest = new Map();
-  const transferStatusComparisonRightOffsetsByDigest = new Map();
 
   const adminPublicKeyBytes = shiftedHexToBytes(adminPublicKey.toLowerCase());
   let isAdminPublicKeyNULL = true;
@@ -176,8 +177,7 @@ export const connection = function ({
   const publicPeers = [];
 
   const computerStateResponsesByTimestamp = new Map();
-  const transferStatusResponsesByDigest = new Map();
-  const transferStatusesByDigest = new Map();
+  const transferStatusResponsesStateByDigest = new Map();
   const transferStatusRequestsToResendByDigest = new Map();
 
   const getComputerState = function () {
@@ -258,21 +258,31 @@ export const connection = function ({
   };
 
   const getTransferStatus = async function (digest) {
-    let responses = transferStatusResponsesByDigest.get(digest);
-    if (responses === undefined) {
-      responses = Array(NUMBER_OF_COMPUTORS).fill([]);
-      responses.resolvers = [];
+    let state = transferStatusResponsesStateByDigest.get(digest);
+    if (state === undefined) {
+      state = {};
+      state.responses = Array(NUMBER_OF_COMPUTORS).fill(Array(NUMBER_OF_CONNECTIONS));
+      state.resolvers = [];
     } else {
-      responses.fill([]);
+      state.responses.fill(Array(NUMBER_OF_CONNECTIONS));
     }
-    responses.requestTimestamp = timestamp();
-    responses.processedFlags = Array(NUMBER_OF_COMPUTORS).fill(false);
+    state.requestTimestamp = timestamp();
+    state.processedFlags = Array(NUMBER_OF_COMPUTORS).fill(false);
+    state.computorReports = [];
+    // TODO: wait for computer state to be initialized.
+    state.computerState = {
+      ...latestComputerState,
+      computorPublicKeys: [...latestComputerState.computorPublicKeys],
+      bytes: [...latestComputerState.bytes],
+    };
+    state.transferStatusComparisonStatuses = Array(NUMBER_OF_COMPUTORS).fill(1);
+    state.transferStatusComparisonRightOffsets = Array(NUMBER_OF_COMPUTORS).fill(1);
+    state.statuses = [];
+    transferStatusResponsesStateByDigest.set(digest, state);
+
     const promise = new Promise(function (resolve) {
-      responses.resolvers.push(resolve);
+      state.resolvers.push(resolve);
     });
-    transferStatusResponsesByDigest.set(digest, responses);
-    transferStatusComparisonStatusesByDigest.set(digest, Array(NUMBER_OF_COMPUTORS).fill(1));
-    transferStatusComparisonRightOffsetsByDigest.set(digest, Array(NUMBER_OF_COMPUTORS).fill(1));
 
     const request = new Uint8Array(TRANSFER_STATUS_REQUEST_LENGTH);
     const requestView = new DataView(request.buffer);
@@ -285,7 +295,7 @@ export const connection = function ({
     );
     requestView['setUint' + REQUEST_LENGTH * 8](REQUEST_OFFSET, REQUEST_TYPES.WEBSOCKET, true);
     request[REQUEST_TYPE_OFFSET] = WEBSOCKET_REQUEST_TYPES.GET_TRANSFER_STATUS;
-    requestView.setBigUint64(REQUEST_TIMESTAMP_OFFSET, responses.requestTimestamp, true);
+    requestView.setBigUint64(REQUEST_TIMESTAMP_OFFSET, state.requestTimestamp, true);
 
     request.set(shiftedHexToBytes(digest.toLowerCase()), TRANSFER_STATUS_REQUEST_DIGEST_OFFSET);
 
@@ -549,6 +559,10 @@ export const connection = function ({
                                 ),
                                 timestamp,
                                 computorPublicKeys: Array(NUMBER_OF_COMPUTORS),
+                                bytes: response.slice(
+                                  COMPUTER_STATE_COMPUTOR_INDEX_OFFSET,
+                                  COMPUTER_STATE_SIGNATURE_OFFSET + COMPUTER_STATE_SIGNATURE_LENGTH
+                                ),
                               };
 
                               let offset = COMPUTER_STATE_COMPUTOR_PUBLIC_KEYS_OFFSET;
@@ -605,9 +619,9 @@ export const connection = function ({
                           offset + TRANSFER_STATUS_DIGEST_OFFSET + TRANSFER_STATUS_DIGEST_LENGTH
                         )
                       ).toUpperCase();
-                      const responses = transferStatusResponsesByDigest.get(digest);
+                      const state = transferStatusResponsesStateByDigest.get(digest);
                       const ts = responseView.getBigUint64(RESPONSE_TIMESTAMP_OFFSET, true);
-                      if (responses !== undefined && responses.requestTimestamp === ts) {
+                      if (state !== undefined && state.requestTimestamp === ts) {
                         const computorIndex = responseView[
                           'getUint' + TRANSFER_STATUS_COMPUTOR_INDEX_LENGTH * 8
                         ](offset + TRANSFER_STATUS_COMPUTOR_INDEX_OFFSET, true);
@@ -620,8 +634,8 @@ export const connection = function ({
                           true
                         );
                         if (
-                          epoch === latestComputerState.epoch &&
-                          tick <= latestComputerState.tick
+                          epoch === state.computerState.epoch &&
+                          tick <= state.computerState.tick
                         ) {
                           const messageDigest = new Uint8Array(HASH_LENGTH);
                           response[offset + TRANSFER_STATUS_DIGEST_OFFSET] ^= 3;
@@ -636,7 +650,7 @@ export const connection = function ({
                           response[offset + TRANSFER_STATUS_DIGEST_OFFSET] ^= 3;
                           if (
                             (await crypto).schnorrq.verify(
-                              latestComputerState.computorPublicKeys[computorIndex],
+                              state.computerState.computorPublicKeys[computorIndex],
                               messageDigest,
                               response.subarray(
                                 offset + TRANSFER_STATUS_SIGNATURE_OFFSET,
@@ -646,16 +660,12 @@ export const connection = function ({
                               )
                             ) === 1
                           ) {
-                            responses[computorIndex][socket.i] = response.subarray(
+                            state.responses[computorIndex][socket.i] = response.subarray(
                               offset,
                               offset + TRANSFER_STATUS_LENGTH
                             );
-                            let transferStatusComparisonRightOffsets =
-                              transferStatusComparisonRightOffsetsByDigest.get(digest);
-                            let transferStatusComparisonStatus =
-                              transferStatusComparisonStatusesByDigest.get(digest);
                             const { status, rightOffset } = compareResponses(
-                              responses[computorIndex]
+                              state.responses[computorIndex]
                                 .filter(function (response) {
                                   return response !== undefined;
                                 })
@@ -665,27 +675,22 @@ export const connection = function ({
                                     TRANSFER_STATUS_STATUS_OFFSET + TRANSFER_STATUS_STATUS_LENGTH
                                   );
                                 }),
-                              transferStatusComparisonStatus[computorIndex],
-                              transferStatusComparisonRightOffsets[computorIndex]
+                              state.transferStatusComparisonStatuses[computorIndex],
+                              state.transferStatusComparisonRightOffsets[computorIndex]
                             );
 
-                            transferStatusComparisonStatus[computorIndex] = status;
-                            transferStatusComparisonRightOffsets[computorIndex] = rightOffset;
+                            state.transferStatusComparisonStatuses[computorIndex] = status;
+                            state.transferStatusComparisonRightOffsets[computorIndex] = rightOffset;
 
                             if (
                               status >= 2 &&
-                              responses.processedFlags[computorIndex] === false &&
-                              (responses.processedFlags[computorIndex] = true)
+                              state.processedFlags[computorIndex] === false &&
+                              (state.processedFlags[computorIndex] = true)
                             ) {
-                              let statuses = transferStatusesByDigest.get(digest);
-                              if (statuses === undefined) {
-                                statuses = Array(NUMBER_OF_COMPUTORS);
-                                transferStatusesByDigest.set(digest, statuses);
+                              if (state.statuses[computorIndex] === undefined) {
+                                state.statuses[computorIndex] = [];
                               }
-                              if (statuses[computorIndex] === undefined) {
-                                statuses[computorIndex] = Array(NUMBER_OF_COMPUTORS);
-                              }
-
+                              let hasReportedProcessed = false;
                               for (let i = 0; i < TRANSFER_STATUS_STATUS_LENGTH; i++) {
                                 for (let j = 0; j < 8; j += 2) {
                                   let transferStatus = 0; // unseen
@@ -712,20 +717,35 @@ export const connection = function ({
                                   ) {
                                     // 10 - processed
                                     transferStatus = 2;
+                                    hasReportedProcessed = true;
                                   }
-                                  statuses[computorIndex][i * 4 + j / 2] = transferStatus;
+                                  state.statuses[computorIndex][i * 4 + j / 2] = transferStatus;
                                 }
                               }
 
-                              const report = [0, 0, 0];
+                              if (hasReportedProcessed) {
+                                state.computorReports.push(
+                                  response.slice(
+                                    offset + TRANSFER_STATUS_DIGEST_OFFSET,
+                                    offset +
+                                      TRANSFER_STATUS_SIGNATURE_OFFSET +
+                                      TRANSFER_STATUS_SIGNATURE_LENGTH
+                                  )
+                                );
+                              }
+
+                              const report = [0, 0, 0, 0];
 
                               for (let i = 0; i < NUMBER_OF_COMPUTORS; i++) {
                                 for (let j = 0; j < NUMBER_OF_COMPUTORS; j++) {
                                   if (i !== j) {
-                                    if (statuses[i] !== undefined && statuses[i][j] !== undefined) {
-                                      report[statuses[i][j]] += 1;
+                                    if (
+                                      state.statuses[i] === undefined ||
+                                      state.statuses[i][j] === undefined
+                                    ) {
+                                      report[3] += 1;
                                     } else {
-                                      report[0] += 1;
+                                      report[state.statuses[i][j]] += 1;
                                     }
                                   }
                                 }
@@ -733,19 +753,61 @@ export const connection = function ({
 
                               that.emit('transferStatus', {
                                 hash: digest,
-                                unseen: Math.floor(report[0] / (NUMBER_OF_COMPUTORS - 1)),
+                                unseen: Math.floor(
+                                  (report[3] + report[0]) / (NUMBER_OF_COMPUTORS - 1)
+                                ),
                                 seen: Math.floor(report[1] / (NUMBER_OF_COMPUTORS - 1)),
                                 processed: Math.floor(report[2] / (NUMBER_OF_COMPUTORS - 1)),
+                                epoch,
+                                tick,
                               });
 
-                              if (Math.floor(report[2] / (NUMBER_OF_COMPUTORS - 1)) >= 451) {
-                                transferStatusResponsesByDigest.delete(digest);
-                                transferStatusComparisonStatusesByDigest.delete(digest);
-                                transferStatusComparisonRightOffsetsByDigest.delete(digest);
-                                transferStatusesByDigest.delete(digest);
+                              if (
+                                Math.floor(report[0] / (NUMBER_OF_COMPUTORS - 1)) >= 451 ||
+                                Math.floor(report[1] / (NUMBER_OF_COMPUTORS - 1)) >= 451 ||
+                                Math.floor(report[2] / (NUMBER_OF_COMPUTORS - 1)) >= 451
+                              ) {
+                                transferStatusResponsesStateByDigest.delete(digest);
+                                transferStatusRequestsToResendByDigest.delete(digest);
+
+                                let receipt;
+                                if (Math.floor(report[2] / (NUMBER_OF_COMPUTORS - 1)) >= 451) {
+                                  receipt = new Uint8Array(
+                                    state.computerState.bytes.length +
+                                      state.computorReports.length *
+                                        (TRANSFER_STATUS_SIGNATURE_OFFSET +
+                                          TRANSFER_STATUS_SIGNATURE_LENGTH -
+                                          TRANSFER_STATUS_DIGEST_OFFSET)
+                                  );
+                                  receipt.set(state.computerState.bytes, 0);
+                                  for (
+                                    let i = 0, offset = state.computerState.bytes.length;
+                                    offset < receipt.length;
+                                    offset +=
+                                      TRANSFER_STATUS_SIGNATURE_OFFSET +
+                                      TRANSFER_STATUS_SIGNATURE_LENGTH -
+                                      TRANSFER_STATUS_DIGEST_OFFSET
+                                  ) {
+                                    receipt.set(state.computorReports[i++], offset);
+                                  }
+                                }
+
+                                state.resolvers.forEach(function (resolve) {
+                                  resolve({
+                                    hash: digest,
+                                    receipt,
+                                    unseen: Math.floor(
+                                      (report[3] + report[0]) / (NUMBER_OF_COMPUTORS - 1)
+                                    ),
+                                    seen: Math.floor(report[1] / (NUMBER_OF_COMPUTORS - 1)),
+                                    processed: Math.floor(report[2] / (NUMBER_OF_COMPUTORS - 1)),
+                                    epoch,
+                                    tick,
+                                  });
+                                });
                               }
 
-                              responses[computorIndex] = [];
+                              state.responses[computorIndex] = Array(NUMBER_OF_COMPUTORS);
                             }
                           }
                         }

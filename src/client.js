@@ -1,19 +1,34 @@
 'use strict';
 
-import { connection as _connection, NUMBER_OF_COMPUTORS } from './connection.js';
 import {
-  TIMESTAMP_OFFSET,
+  COMPUTER_STATE_COMPUTOR_INDEX_OFFSET,
+  COMPUTER_STATE_COMPUTOR_PUBLIC_KEYS_OFFSET,
+  COMPUTER_STATE_SIGNATURE_LENGTH,
+  COMPUTER_STATE_SIGNATURE_OFFSET,
+  connection as _connection,
+  NUMBER_OF_COMPUTORS,
+  TRANSFER_STATUS_COMPUTOR_INDEX_LENGTH,
+  TRANSFER_STATUS_COMPUTOR_INDEX_OFFSET,
+  TRANSFER_STATUS_DIGEST_OFFSET,
+  TRANSFER_STATUS_SIGNATURE_LENGTH,
+  TRANSFER_STATUS_SIGNATURE_OFFSET,
+  TRANSFER_STATUS_STATUS_LENGTH,
+  TRANSFER_STATUS_STATUS_OFFSET,
+} from './connection.js';
+import {
   HASH_LENGTH,
   SIGNATURE_OFFSET,
   transfer,
   transferObject,
+  TRANSFER_LENGTH,
+  SIGNATURE_LENGTH,
 } from './transfer.js';
-import { seedToBytes, identity, privateKey } from './identity.js';
+import { seedToBytes, identity, privateKey, PUBLIC_KEY_LENGTH } from './identity.js';
 import { crypto } from './crypto/index.js';
 import level from 'level';
 import path from 'path';
 import aesjs from 'aes-js';
-import { bytesToShiftedHex } from './utils/hex.js';
+import { bytesToShiftedHex, shiftedHexToBytes } from './utils/hex.js';
 
 /* globals Connection */
 
@@ -82,6 +97,19 @@ export const client = function ({
       adminPublicKey,
       reconnectTimeoutDuration,
     });
+
+  const adminPublicKeyBytes = shiftedHexToBytes(adminPublicKey.toLowerCase());
+  let isAdminPublicKeyNULL = true;
+  for (let i = 0; i < adminPublicKeyBytes.length; i++) {
+    if (adminPublicKeyBytes[i] !== 0) {
+      isAdminPublicKeyNULL = false;
+      break;
+    }
+  }
+  if (isAdminPublicKeyNULL) {
+    throw new Error('Illegal admin public key.');
+  }
+
   const id = identity(seed, index);
   database = Promise.resolve(
     database ||
@@ -95,8 +123,11 @@ export const client = function ({
   const clientMixin = function () {
     const that = this;
 
+    const hashes = new Set();
     const hashesByIndex = new Map();
     const transfers = [];
+    const transferStatuses = [];
+    const receipts = [];
     let counter = 0;
     let resolveAESCounter;
     let AESCounter = new Promise(function (resolve) {
@@ -118,6 +149,99 @@ export const client = function ({
       return essence;
     };
 
+    const processTransferStatus = function (params) {
+      let latestRequestTimestamp = Date.now() - NUMBER_OF_COMPUTORS * 100 * 2;
+      let receivedReceipt = false;
+
+      const infoListener = async function ({ computerState }) {
+        if (
+          computerState.status >= 2 &&
+          Date.now() - latestRequestTimestamp > NUMBER_OF_COMPUTORS * 100 * 2
+        ) {
+          latestRequestTimestamp = Date.now();
+
+          const response = await connection.getTransferStatus(params.hash);
+
+          if (
+            response.receipt !== undefined &&
+            receivedReceipt === false &&
+            (receivedReceipt = true)
+          ) {
+            const { K12, schnorrq } = await crypto;
+
+            await AESCounter;
+            const counterValue = ++counter;
+            hashesByIndex.delete(params.counter);
+            hashesByIndex.set(counterValue, params.hashBytes);
+            const energyCopy = energy;
+            energy = (await id) === params.destination ? energy : energy - params.energy;
+            const essence = databaseEssence();
+            const secretKey = privateKey(seed, index, K12);
+            const signature = schnorrq.sign(
+              secretKey,
+              schnorrq.generatePublicKey(secretKey),
+              essence
+            );
+
+            const counterBytes = new Uint8Array(4);
+            const counterView = new DataView(counterBytes.buffer);
+            counterView.setUint32(0, counterValue, true);
+            const energyBytes = new Uint8Array(8);
+            const energyView = new DataView(energyBytes.buffer);
+            energyView.setBigUint64(0, energy, true);
+            const transferAndReceipt = new Uint8Array(
+              1 + params.transfer.length + response.receipt.length
+            );
+            transferAndReceipt[0] = 1;
+            transferAndReceipt.set(params.transfer, 1);
+            transferAndReceipt.set(response.receipt, 1 + params.transfer.length);
+
+            const key = new Uint8Array(16);
+            K12(seedToBytes(seed), key, 16);
+
+            const aes = new aesjs.ModeOfOperation.ctr(key, new aesjs.Counter(counterValue));
+
+            try {
+              await (
+                await database
+              )
+                .batch()
+                .del(params.counter, { valueEncoding: 'binary' })
+                .put(counterValue, Buffer.from(aes.encrypt(transferAndReceipt)), {
+                  valueEncoding: 'binary',
+                })
+                .put('counter', Buffer.from(counterBytes), {
+                  valueEncoding: 'binary',
+                })
+                .put('energy', Buffer.from(energyBytes), {
+                  valueEncoding: 'binary',
+                })
+                .put('signature', Buffer.from(signature), {
+                  valueEncoding: 'binary',
+                })
+                .write();
+
+              connection.removeListener('info', infoListener);
+
+              that.emit('energy', energy);
+
+              that.emit('receipt', {
+                ...response,
+                receipt: transferAndReceipt.slice(1),
+                receiptBase64: Buffer.from(transferAndReceipt.slice(1)).toString('base64'),
+              });
+            } catch {
+              receivedReceipt = false;
+              energy = energyCopy;
+            }
+          }
+        }
+      };
+
+      connection.addListener('info', infoListener);
+      infoListeners.push(infoListener);
+    };
+
     const onData = async function (data) {
       switch (data.key) {
         case 'counter':
@@ -134,60 +258,199 @@ export const client = function ({
           const key = new Uint8Array(16);
           K12(seedToBytes(seed), key, 16);
           const aes = new aesjs.ModeOfOperation.ctr(key, new aesjs.Counter(parseInt(data.key)));
-          const signedValue = aes.decrypt(Array.from(data.value));
-
-          switch (signedValue[0]) {
+          const decryptedValue = aes.decrypt(Array.from(data.value));
+          switch (decryptedValue[0]) {
             case 0:
               {
                 // unprocessed  transfer
-                const value = signedValue.slice(1, 1 + SIGNATURE_OFFSET);
-                value[0] = value[0] ^ 1;
-                const hash = new Uint8Array(HASH_LENGTH);
-                K12(value, hash, HASH_LENGTH);
+                connection.broadcastTransfer(decryptedValue.slice(1));
+                const digest = new Uint8Array(HASH_LENGTH);
+                const message = decryptedValue.subarray(1, 1 + SIGNATURE_OFFSET);
+                message[0] ^= 1;
+                K12(message, digest, HASH_LENGTH);
+                message[0] ^= 1;
                 if (
                   schnorrq.verify(
                     schnorrq.generatePublicKey(privateKey(seed, index, K12)),
-                    hash,
-                    signedValue.slice(1 + SIGNATURE_OFFSET)
+                    digest,
+                    decryptedValue.subarray(1 + SIGNATURE_OFFSET)
                   ) === 1
                 ) {
-                  const hash2 = new Uint8Array(HASH_LENGTH);
-                  const value2 = signedValue.slice(1);
-                  K12(value2, hash2, HASH_LENGTH);
-                  hashesByIndex.set(parseInt(data.key), hash2);
-                  transfers.push(await transferObject(signedValue.slice(1), hash2));
-                  let latestRequestTimestamp = Date.now() - NUMBER_OF_COMPUTORS * 100 * 2;
-                  const infoListener = async function ({ computerState }) {
-                    if (
-                      computerState.status >= 2 &&
-                      Date.now() - latestRequestTimestamp > NUMBER_OF_COMPUTORS * 100 * 2
-                    ) {
-                      latestRequestTimestamp = Date.now();
-                      console.log('GET_TRANSFER_STATUS');
-                      connection.broadcastTransfer(signedValue.slice(1));
-                      connection.getTransferStatus(bytesToShiftedHex(hash2).toUpperCase());
-                    }
-                  };
-                  connection.addListener('info', infoListener);
-                  infoListeners.push(infoListener);
+                  const hashBytes = new Uint8Array(HASH_LENGTH);
+                  const bytes = decryptedValue.subarray(1);
+                  K12(bytes, hashBytes, HASH_LENGTH);
+                  hashesByIndex.set(parseInt(data.key), hashBytes);
+                  const transfer = await transferObject(bytes, hashBytes);
+                  transfers.push(transfer);
+                  const hash = bytesToShiftedHex(hashBytes).toUpperCase();
+                  hashes.add(hash);
+                  processTransferStatus({
+                    hash,
+                    hashBytes,
+                    transfer: bytes,
+                    destination: transfer.destination,
+                    energy: transfer.energy,
+                    counter: parseInt(data.key),
+                  });
                 }
               }
               break;
-            case 2: {
+            case 1: {
               // processed transfer
-              const value = signedValue.slice(1, 1 + SIGNATURE_OFFSET);
-              value[0] = value[0] ^ 1;
-              const hash = new Uint8Array(HASH_LENGTH);
-              K12(value, hash, HASH_LENGTH);
+              const decryptedValueView = new DataView(decryptedValue.buffer);
+              const digest = new Uint8Array(HASH_LENGTH);
+              const message = decryptedValue.subarray(1, 1 + SIGNATURE_OFFSET);
+              message[0] ^= 1;
+              K12(message, digest, HASH_LENGTH);
+              message[0] ^= 1;
+              let offset = 1 + SIGNATURE_OFFSET;
               if (
                 schnorrq.verify(
                   schnorrq.generatePublicKey(privateKey(seed, index, K12)),
-                  hash,
-                  signedValue.slice(1 + SIGNATURE_OFFSET)
+                  digest,
+                  decryptedValue.subarray(offset, (offset += SIGNATURE_LENGTH))
                 ) === 1
               ) {
-                hashesByIndex.set(parseInt(data.key), hash);
-                transfers.push(await transferObject(signedValue.slice(1), hash));
+                const computerStateDigest = new Uint8Array(HASH_LENGTH);
+                K12(
+                  decryptedValue.subarray(
+                    offset,
+                    (offset +=
+                      COMPUTER_STATE_SIGNATURE_OFFSET - COMPUTER_STATE_COMPUTOR_INDEX_OFFSET)
+                  ),
+                  computerStateDigest,
+                  HASH_LENGTH
+                );
+                if (
+                  schnorrq.verify(
+                    adminPublicKeyBytes,
+                    computerStateDigest,
+                    decryptedValue.slice(offset, (offset += COMPUTER_STATE_SIGNATURE_LENGTH))
+                  ) === 1
+                ) {
+                  const computorPublicKeys = [];
+                  let computorPublicKeysOffset =
+                    1 +
+                    TRANSFER_LENGTH +
+                    COMPUTER_STATE_COMPUTOR_PUBLIC_KEYS_OFFSET -
+                    COMPUTER_STATE_COMPUTOR_INDEX_OFFSET;
+                  for (let i = 0; i < NUMBER_OF_COMPUTORS; i++) {
+                    computorPublicKeys.push(
+                      decryptedValue.subarray(
+                        computorPublicKeysOffset + i * PUBLIC_KEY_LENGTH,
+                        computorPublicKeysOffset + (i + 1) * PUBLIC_KEY_LENGTH
+                      )
+                    );
+                  }
+
+                  const statuses = [];
+
+                  while (offset < decryptedValue.length) {
+                    const transferStatusOffset =
+                      offset + TRANSFER_STATUS_STATUS_OFFSET - TRANSFER_STATUS_DIGEST_OFFSET;
+                    const digest = new Uint8Array(HASH_LENGTH);
+                    decryptedValue[offset] ^= 3;
+                    K12(
+                      decryptedValue.subarray(
+                        offset,
+                        (offset += TRANSFER_STATUS_SIGNATURE_OFFSET - TRANSFER_STATUS_DIGEST_OFFSET)
+                      ),
+                      digest,
+                      HASH_LENGTH
+                    );
+                    decryptedValue[
+                      offset - (TRANSFER_STATUS_SIGNATURE_OFFSET - TRANSFER_STATUS_DIGEST_OFFSET)
+                    ] ^= 3;
+                    const computorIndex = decryptedValueView[
+                      'getUint' + TRANSFER_STATUS_COMPUTOR_INDEX_LENGTH * 8
+                    ](
+                      offset -
+                        (TRANSFER_STATUS_SIGNATURE_OFFSET - TRANSFER_STATUS_DIGEST_OFFSET) +
+                        TRANSFER_STATUS_COMPUTOR_INDEX_OFFSET -
+                        TRANSFER_STATUS_DIGEST_OFFSET,
+                      true
+                    );
+                    if (
+                      schnorrq.verify(
+                        computorPublicKeys[computorIndex],
+                        digest,
+                        decryptedValue.subarray(
+                          offset,
+                          (offset += TRANSFER_STATUS_SIGNATURE_LENGTH)
+                        )
+                      ) === 1
+                    ) {
+                      if (statuses[computorIndex] === undefined) {
+                        statuses[computorIndex] = [];
+                      }
+                      for (let i = 0; i < TRANSFER_STATUS_STATUS_LENGTH; i++) {
+                        for (let j = 0; j < 8; j += 2) {
+                          let transferStatus = 0; // unseen
+                          if (
+                            ((decryptedValue[transferStatusOffset + i] >> (8 - (j + 1))) &
+                              0x0001) ===
+                            0
+                          ) {
+                            if (
+                              ((decryptedValue[transferStatusOffset + i] >> (8 - (j + 2))) &
+                                0x0001) ===
+                              1
+                            ) {
+                              // 01 - seen
+                              transferStatus = 1;
+                            }
+                          } else if (
+                            ((decryptedValue[transferStatusOffset + i] >> (8 - (j + 2))) &
+                              0x0001) ===
+                            0
+                          ) {
+                            // 10 - processed
+                            transferStatus = 2;
+                          }
+                          statuses[computorIndex][i * 4 + j / 2] = transferStatus;
+                        }
+                      }
+                    }
+                  }
+
+                  const report = [0, 0, 0, 0];
+
+                  for (let i = 0; i < NUMBER_OF_COMPUTORS; i++) {
+                    for (let j = 0; j < NUMBER_OF_COMPUTORS; j++) {
+                      if (i !== j) {
+                        if (statuses[i] === undefined || statuses[i][j] === undefined) {
+                          report[3] += 1;
+                        } else {
+                          report[statuses[i][j]] += 1;
+                        }
+                      }
+                    }
+                  }
+
+                  const hashBytes = new Uint8Array(HASH_LENGTH);
+                  const bytes = decryptedValue.subarray(1, 1 + TRANSFER_LENGTH);
+                  K12(bytes, hashBytes, HASH_LENGTH);
+
+                  hashesByIndex.set(parseInt(data.key), hashBytes);
+
+                  transfers.push(await transferObject(bytes, hashBytes));
+                  const hash = bytesToShiftedHex(hashBytes).toUpperCase();
+                  hashes.add(hash);
+
+                  transferStatuses.push({
+                    hash,
+                    unseen: Math.floor((report[3] + report[0]) / (NUMBER_OF_COMPUTORS - 1)),
+                    seen: Math.floor(report[1] / (NUMBER_OF_COMPUTORS - 1)),
+                    processed: Math.floor(report[2] / (NUMBER_OF_COMPUTORS - 1)),
+                    // TODO: add epoch/tick
+                  });
+
+                  receipts.push({
+                    hash,
+                    receipt: decryptedValue.slice(1),
+                    receiptBase64: Buffer.from(decryptedValue.slice(1)).toString('base64'),
+                  });
+                }
               }
             }
           }
@@ -213,6 +476,12 @@ export const client = function ({
           that.emit('energy', energy);
           transfers.forEach(function (transfer) {
             that.emit('transfer', transfer);
+          });
+          transferStatuses.forEach(function (status) {
+            that.emit('transferStatus', status);
+          });
+          receipts.forEach(function (receipt) {
+            that.emit('receipt', receipt);
           });
         }
       }
@@ -270,8 +539,8 @@ export const client = function ({
         const { hashBytes, hash, bytes } = transferObject;
 
         await AESCounter;
-        counter++;
-        hashesByIndex.set(counter, hashBytes);
+        let counterValue = ++counter;
+        hashesByIndex.set(counterValue, hashBytes);
         const essence = databaseEssence();
         const { K12, schnorrq } = await crypto;
         const secretKey = privateKey(seed, index, K12);
@@ -279,11 +548,11 @@ export const client = function ({
         const key = new Uint8Array(16);
         K12(seedToBytes(seed), key, 16);
 
-        const aes = new aesjs.ModeOfOperation.ctr(key, new aesjs.Counter(counter));
+        const aes = new aesjs.ModeOfOperation.ctr(key, new aesjs.Counter(counterValue));
 
         const counterBytes = new Uint8Array(4);
         const counterView = new DataView(counterBytes.buffer);
-        counterView.setUint32(0, counter, true);
+        counterView.setUint32(0, counterValue, true);
 
         const bytesCopy = new Uint8Array(1 + bytes.length);
         bytesCopy[0] = 0;
@@ -295,26 +564,229 @@ export const client = function ({
           .batch()
           .put('counter', Buffer.from(counterBytes), { valueEncoding: 'binary' })
           .put('signature', Buffer.from(signature), { valueEncoding: 'binary' })
-          .put(counter, Buffer.from(aes.encrypt(bytesCopy)), { valueEncoding: 'binary' })
+          .put(counterValue, Buffer.from(aes.encrypt(bytesCopy)), { valueEncoding: 'binary' })
           .write();
 
         that.emit('transfer', transferObject);
 
         connection.broadcastTransfer(bytes);
 
-        let latestRequestTimestamp = Date.now() - NUMBER_OF_COMPUTORS * 100 * 2;
-        const infoListener = async function ({ computerState }) {
-          if (
-            computerState.status >= 2 &&
-            Date.now() - latestRequestTimestamp > NUMBER_OF_COMPUTORS * 100 * 2
-          ) {
-            latestRequestTimestamp = Date.now();
-            console.log('GET_TRANSFER_STATUS');
-            connection.getTransferStatus(hash);
+        processTransferStatus({
+          hash,
+          hashBytes,
+          transfer: bytes,
+          destination: params.destination,
+          energy: BigInt(params.energy),
+          counter: counterValue,
+        });
+      },
+
+      async importReceipt(receiptBase64) {
+        await AESCounter();
+        const receipt = Uint8Array.from(Buffer.from(receiptBase64, 'base64'));
+        const transfer = await transferObject(receipt.subarray(0, TRANSFER_LENGTH));
+
+        if (!hashes.has(transfer.hash)) {
+          let newEnergy;
+          if (transfer.destination !== transfer.source) {
+            if ((await id) === transfer.destination) {
+              newEnergy += transfer.energy;
+            } else if ((await id) === transfer.source) {
+              newEnergy -= transfer.energy;
+            } else {
+              return;
+            }
           }
-        };
-        connection.addListener('info', infoListener);
-        infoListeners.push(infoListener);
+
+          const { K12, schnorrq } = await crypto;
+
+          const receiptView = new DataView(receipt.buffer);
+          const digest = new Uint8Array(HASH_LENGTH);
+          const message = receipt.subarray(0, SIGNATURE_OFFSET);
+          message[0] ^= 1;
+          K12(message, digest, HASH_LENGTH);
+          message[0] ^= 1;
+          let offset = SIGNATURE_OFFSET;
+          if (
+            schnorrq.verify(
+              schnorrq.generatePublicKey(privateKey(seed, index, K12)),
+              digest,
+              receipt.subarray(offset, (offset += SIGNATURE_LENGTH))
+            ) === 1
+          ) {
+            const computerStateDigest = new Uint8Array(HASH_LENGTH);
+            K12(
+              receipt.subarray(
+                offset,
+                (offset += COMPUTER_STATE_SIGNATURE_OFFSET - COMPUTER_STATE_COMPUTOR_INDEX_OFFSET)
+              ),
+              computerStateDigest,
+              HASH_LENGTH
+            );
+            if (
+              schnorrq.verify(
+                adminPublicKeyBytes,
+                computerStateDigest,
+                receipt.slice(offset, (offset += COMPUTER_STATE_SIGNATURE_LENGTH))
+              ) === 1
+            ) {
+              const computorPublicKeys = [];
+              let computorPublicKeysOffset =
+                TRANSFER_LENGTH +
+                COMPUTER_STATE_COMPUTOR_PUBLIC_KEYS_OFFSET -
+                COMPUTER_STATE_COMPUTOR_INDEX_OFFSET;
+              for (let i = 0; i < NUMBER_OF_COMPUTORS; i++) {
+                computorPublicKeys.push(
+                  receipt.subarray(
+                    computorPublicKeysOffset + i * PUBLIC_KEY_LENGTH,
+                    computorPublicKeysOffset + (i + 1) * PUBLIC_KEY_LENGTH
+                  )
+                );
+              }
+
+              const statuses = [];
+
+              while (offset < receipt.length) {
+                const transferStatusOffset =
+                  offset + TRANSFER_STATUS_STATUS_OFFSET - TRANSFER_STATUS_DIGEST_OFFSET;
+                const digest = new Uint8Array(HASH_LENGTH);
+                receipt[offset] ^= 3;
+                K12(
+                  receipt.subarray(
+                    offset,
+                    (offset += TRANSFER_STATUS_SIGNATURE_OFFSET - TRANSFER_STATUS_DIGEST_OFFSET)
+                  ),
+                  digest,
+                  HASH_LENGTH
+                );
+                receipt[
+                  offset - (TRANSFER_STATUS_SIGNATURE_OFFSET - TRANSFER_STATUS_DIGEST_OFFSET)
+                ] ^= 3;
+                const computorIndex = receiptView[
+                  'getUint' + TRANSFER_STATUS_COMPUTOR_INDEX_LENGTH * 8
+                ](
+                  offset -
+                    (TRANSFER_STATUS_SIGNATURE_OFFSET - TRANSFER_STATUS_DIGEST_OFFSET) +
+                    TRANSFER_STATUS_COMPUTOR_INDEX_OFFSET -
+                    TRANSFER_STATUS_DIGEST_OFFSET,
+                  true
+                );
+                if (
+                  schnorrq.verify(
+                    computorPublicKeys[computorIndex],
+                    digest,
+                    receipt.subarray(offset, (offset += TRANSFER_STATUS_SIGNATURE_LENGTH))
+                  ) === 1
+                ) {
+                  if (statuses[computorIndex] === undefined) {
+                    statuses[computorIndex] = [];
+                  }
+                  for (let i = 0; i < TRANSFER_STATUS_STATUS_LENGTH; i++) {
+                    for (let j = 0; j < 8; j += 2) {
+                      let transferStatus = 0; // unseen
+                      if (((receipt[transferStatusOffset + i] >> (8 - (j + 1))) & 0x0001) === 0) {
+                        if (((receipt[transferStatusOffset + i] >> (8 - (j + 2))) & 0x0001) === 1) {
+                          // 01 - seen
+                          transferStatus = 1;
+                        }
+                      } else if (
+                        ((receipt[transferStatusOffset + i] >> (8 - (j + 2))) & 0x0001) ===
+                        0
+                      ) {
+                        // 10 - processed
+                        transferStatus = 2;
+                      }
+                      statuses[computorIndex][i * 4 + j / 2] = transferStatus;
+                    }
+                  }
+                }
+              }
+
+              const report = [0, 0, 0, 0];
+
+              for (let i = 0; i < NUMBER_OF_COMPUTORS; i++) {
+                for (let j = 0; j < NUMBER_OF_COMPUTORS; j++) {
+                  if (i !== j) {
+                    if (statuses[i] === undefined || statuses[i][j] === undefined) {
+                      report[3] += 1;
+                    } else {
+                      report[statuses[i][j]] += 1;
+                    }
+                  }
+                }
+              }
+
+              if (Math.floor(report[2] / (NUMBER_OF_COMPUTORS - 1)) >= 451) {
+                const counterValue = ++counter;
+                hashesByIndex.set(counterValue, transfer.hashBytes);
+                const energyCopy = energy;
+                energy = newEnergy;
+
+                const essence = databaseEssence();
+                const secretKey = privateKey(seed, index, K12);
+                const signature = schnorrq.sign(
+                  secretKey,
+                  schnorrq.generatePublicKey(secretKey),
+                  essence
+                );
+
+                const counterBytes = new Uint8Array(4);
+                const counterView = new DataView(counterBytes.buffer);
+                counterView.setUint32(0, counterValue, true);
+                const energyBytes = new Uint8Array(8);
+                const energyView = new DataView(energyBytes.buffer);
+                energyView.setBigUint64(0, energy, true);
+                const transferAndReceipt = new Uint8Array(1 + receipt.length);
+                transferAndReceipt[0] = 1;
+                transferAndReceipt.set(receipt, 1);
+
+                const key = new Uint8Array(16);
+                K12(seedToBytes(seed), key, 16);
+
+                const aes = new aesjs.ModeOfOperation.ctr(key, new aesjs.Counter(counterValue));
+
+                try {
+                  await (
+                    await database
+                  )
+                    .batch()
+                    .put(counterValue, Buffer.from(aes.encrypt(transferAndReceipt)), {
+                      valueEncoding: 'binary',
+                    })
+                    .put('counter', Buffer.from(counterBytes), {
+                      valueEncoding: 'binary',
+                    })
+                    .put('energy', Buffer.from(energyBytes), {
+                      valueEncoding: 'binary',
+                    })
+                    .put('signature', Buffer.from(signature), {
+                      valueEncoding: 'binary',
+                    })
+                    .write();
+
+                  that.emit('energy', energy);
+                  that.emit('transfer', transfer);
+                  that.emit('transferStatus', {
+                    hash: transfer.hash,
+                    unseen: Math.floor((report[3] + report[0]) / (NUMBER_OF_COMPUTORS - 1)),
+                    seen: Math.floor(report[1] / (NUMBER_OF_COMPUTORS - 1)),
+                    processed: Math.floor(report[2] / (NUMBER_OF_COMPUTORS - 1)),
+                  });
+                  that.emit('receipt', {
+                    hash: transfer.hash,
+                    receipt,
+                    receiptBase64,
+                  });
+                } catch {
+                  energy = energyCopy;
+                }
+
+                transfers.push(transfer);
+                hashes.add(transfer.hash);
+              }
+            }
+          }
+        }
       },
 
       /**
