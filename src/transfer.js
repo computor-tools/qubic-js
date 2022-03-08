@@ -136,7 +136,7 @@ export const transferObject = async function (transfer, hashBytes) {
     (await crypto).K12(transfer.slice(), hashBytes, HASH_LENGTH);
   }
 
-  return {
+  const transferObj = {
     bytes: transfer.slice(),
     hashBytes,
     hash: bytesToShiftedHex(hashBytes).toUpperCase(),
@@ -154,4 +154,8 @@ export const transferObject = async function (transfer, hashBytes) {
       transfer.subarray(SIGNATURE_OFFSET, SIGNATURE_OFFSET + SIGNATURE_LENGTH)
     ).toString('base64'),
   };
+
+  Object.freeze(transferObj);
+
+  return transferObj;
 };

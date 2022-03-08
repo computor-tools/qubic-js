@@ -277,7 +277,7 @@ export const client = function ({
                   ) === 1
                 ) {
                   const hashBytes = new Uint8Array(HASH_LENGTH);
-                  const bytes = decryptedValue.subarray(1);
+                  const bytes = decryptedValue.slice(1);
                   K12(bytes, hashBytes, HASH_LENGTH);
                   hashesByIndex.set(parseInt(data.key), hashBytes);
                   const transfer = await transferObject(bytes, hashBytes);
@@ -428,7 +428,7 @@ export const client = function ({
                   }
 
                   const hashBytes = new Uint8Array(HASH_LENGTH);
-                  const bytes = decryptedValue.subarray(1, 1 + TRANSFER_LENGTH);
+                  const bytes = decryptedValue.slice(1, 1 + TRANSFER_LENGTH);
                   K12(bytes, hashBytes, HASH_LENGTH);
 
                   hashesByIndex.set(parseInt(data.key), hashBytes);

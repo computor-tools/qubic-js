@@ -81,8 +81,8 @@ export const identity = function (seed, index) {
 };
 
 export const addChecksum = async function (identity) {
-  const identityWithChecksum = new Uint8Array(PRIVATE_KEY_LENGTH + CHECKSUM_LENGTH);
-  identityWithChecksum.set(identity.slice(0, PRIVATE_KEY_LENGTH));
+  const identityWithChecksum = new Uint8Array(PUBLIC_KEY_LENGTH + CHECKSUM_LENGTH);
+  identityWithChecksum.set(identity.slice(0, PUBLIC_KEY_LENGTH));
   (await crypto).K12(
     identity.subarray(0, PUBLIC_KEY_LENGTH),
     identityWithChecksum,
