@@ -158,81 +158,82 @@ export const client = function ({
           computerState.status >= 2 &&
           Date.now() - latestRequestTimestamp > NUMBER_OF_COMPUTORS * 100 * 2
         ) {
-          latestRequestTimestamp = Date.now();
+          if (receivedReceipt === false) {
+            latestRequestTimestamp = Date.now();
+            const response = await connection.getTransferStatus(params.hash);
 
-          const response = await connection.getTransferStatus(params.hash);
+            if (
+              response.receipt !== undefined &&
+              receivedReceipt === false &&
+              (receivedReceipt = true)
+            ) {
+              const { K12, schnorrq } = await crypto;
 
-          if (
-            response.receipt !== undefined &&
-            receivedReceipt === false &&
-            (receivedReceipt = true)
-          ) {
-            const { K12, schnorrq } = await crypto;
+              await AESCounter;
+              const counterValue = ++counter;
+              hashesByIndex.delete(params.counter);
+              hashesByIndex.set(counterValue, params.hashBytes);
+              const energyCopy = energy;
+              energy = (await id) === params.destination ? energy : energy - params.energy;
+              const essence = databaseEssence();
+              const secretKey = privateKey(seed, index, K12);
+              const signature = schnorrq.sign(
+                secretKey,
+                schnorrq.generatePublicKey(secretKey),
+                essence
+              );
 
-            await AESCounter;
-            const counterValue = ++counter;
-            hashesByIndex.delete(params.counter);
-            hashesByIndex.set(counterValue, params.hashBytes);
-            const energyCopy = energy;
-            energy = (await id) === params.destination ? energy : energy - params.energy;
-            const essence = databaseEssence();
-            const secretKey = privateKey(seed, index, K12);
-            const signature = schnorrq.sign(
-              secretKey,
-              schnorrq.generatePublicKey(secretKey),
-              essence
-            );
+              const counterBytes = new Uint8Array(4);
+              const counterView = new DataView(counterBytes.buffer);
+              counterView.setUint32(0, counterValue, true);
+              const energyBytes = new Uint8Array(8);
+              const energyView = new DataView(energyBytes.buffer);
+              energyView.setBigUint64(0, energy, true);
+              const transferAndReceipt = new Uint8Array(
+                1 + params.transfer.length + response.receipt.length
+              );
+              transferAndReceipt[0] = 1;
+              transferAndReceipt.set(params.transfer, 1);
+              transferAndReceipt.set(response.receipt, 1 + params.transfer.length);
 
-            const counterBytes = new Uint8Array(4);
-            const counterView = new DataView(counterBytes.buffer);
-            counterView.setUint32(0, counterValue, true);
-            const energyBytes = new Uint8Array(8);
-            const energyView = new DataView(energyBytes.buffer);
-            energyView.setBigUint64(0, energy, true);
-            const transferAndReceipt = new Uint8Array(
-              1 + params.transfer.length + response.receipt.length
-            );
-            transferAndReceipt[0] = 1;
-            transferAndReceipt.set(params.transfer, 1);
-            transferAndReceipt.set(response.receipt, 1 + params.transfer.length);
+              const key = new Uint8Array(16);
+              K12(seedToBytes(seed), key, 16);
 
-            const key = new Uint8Array(16);
-            K12(seedToBytes(seed), key, 16);
+              const aes = new aesjs.ModeOfOperation.ctr(key, new aesjs.Counter(counterValue));
 
-            const aes = new aesjs.ModeOfOperation.ctr(key, new aesjs.Counter(counterValue));
+              try {
+                await (
+                  await database
+                )
+                  .batch()
+                  .del(params.counter, { valueEncoding: 'binary' })
+                  .put(counterValue, Buffer.from(aes.encrypt(transferAndReceipt)), {
+                    valueEncoding: 'binary',
+                  })
+                  .put('counter', Buffer.from(counterBytes), {
+                    valueEncoding: 'binary',
+                  })
+                  .put('energy', Buffer.from(energyBytes), {
+                    valueEncoding: 'binary',
+                  })
+                  .put('signature', Buffer.from(signature), {
+                    valueEncoding: 'binary',
+                  })
+                  .write();
 
-            try {
-              await (
-                await database
-              )
-                .batch()
-                .del(params.counter, { valueEncoding: 'binary' })
-                .put(counterValue, Buffer.from(aes.encrypt(transferAndReceipt)), {
-                  valueEncoding: 'binary',
-                })
-                .put('counter', Buffer.from(counterBytes), {
-                  valueEncoding: 'binary',
-                })
-                .put('energy', Buffer.from(energyBytes), {
-                  valueEncoding: 'binary',
-                })
-                .put('signature', Buffer.from(signature), {
-                  valueEncoding: 'binary',
-                })
-                .write();
+                connection.removeListener('info', infoListener);
 
-              connection.removeListener('info', infoListener);
+                that.emit('energy', energy);
 
-              that.emit('energy', energy);
-
-              that.emit('receipt', {
-                ...response,
-                receipt: transferAndReceipt.slice(1),
-                receiptBase64: Buffer.from(transferAndReceipt.slice(1)).toString('base64'),
-              });
-            } catch {
-              receivedReceipt = false;
-              energy = energyCopy;
+                that.emit('receipt', {
+                  ...response,
+                  receipt: transferAndReceipt.slice(1),
+                  receiptBase64: Buffer.from(transferAndReceipt.slice(1)).toString('base64'),
+                });
+              } catch {
+                receivedReceipt = false;
+                energy = energyCopy;
+              }
             }
           }
         }
