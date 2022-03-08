@@ -301,6 +301,7 @@ export const connection = function ({
 
     const requestsToResend = [];
     for (let i = 0; i < NUMBER_OF_COMPUTORS; i++) {
+      // TODO: stop sending if status is determined.
       await new Promise(function (resolve) {
         setTimeout(function () {
           resolve();

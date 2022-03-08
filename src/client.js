@@ -158,8 +158,8 @@ export const client = function ({
           computerState.status >= 2 &&
           Date.now() - latestRequestTimestamp > NUMBER_OF_COMPUTORS * 100 * 2
         ) {
+          latestRequestTimestamp = Date.now();
           if (receivedReceipt === false) {
-            latestRequestTimestamp = Date.now();
             const response = await connection.getTransferStatus(params.hash);
 
             if (
@@ -175,6 +175,9 @@ export const client = function ({
               hashesByIndex.set(counterValue, params.hashBytes);
               const energyCopy = energy;
               energy = (await id) === params.destination ? energy : energy - params.energy;
+              if (energy < 0) {
+                energy = 0n;
+              }
               const essence = databaseEssence();
               const secretKey = privateKey(seed, index, K12);
               const signature = schnorrq.sign(
@@ -585,17 +588,18 @@ export const client = function ({
       async importReceipt(receiptBase64) {
         await AESCounter();
         const receipt = Uint8Array.from(Buffer.from(receiptBase64, 'base64'));
-        const transfer = await transferObject(receipt.subarray(0, TRANSFER_LENGTH));
+        const transfer = await transferObject(receipt.slice(0, TRANSFER_LENGTH));
 
         if (!hashes.has(transfer.hash)) {
-          let newEnergy;
+          let newEnergy = energy;
           if (transfer.destination !== transfer.source) {
             if ((await id) === transfer.destination) {
               newEnergy += transfer.energy;
             } else if ((await id) === transfer.source) {
               newEnergy -= transfer.energy;
-            } else {
-              return;
+              if (newEnergy < 0n) {
+                newEnergy = 0n;
+              }
             }
           }
 
