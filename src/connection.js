@@ -159,7 +159,6 @@ export const connection = function ({
   let latestComputerStateSynchronizationTimestamp = 0;
   let latestComputerStateRequestTimestamp = 0n;
   let computerStateComparisonRightOffset = 1;
-  let getComputerStateTimeouts = Array(NUMBER_OF_CONNECTIONS);
   let computerStateSynchronizationTimeout;
 
   const adminPublicKeyBytes = shiftedHexToBytes(adminPublicKey.toLowerCase());
@@ -344,9 +343,6 @@ export const connection = function ({
     sockets.forEach(function (socket) {
       socket.terminate();
     });
-    getComputerStateTimeouts.forEach(function (getComputerStateTimeout) {
-      clearTimeout(getComputerStateTimeout);
-    });
     clearTimeout(computerStateSynchronizationTimeout);
     latestComputerState.status = 0;
     this.emit('info', {
@@ -470,7 +466,7 @@ export const connection = function ({
             );
             const responseView = new DataView(response.buffer);
 
-            switch (response[REQUEST_OFFSET]) {
+            switch (responseView['getUint' + REQUEST_LENGTH * 8](REQUEST_OFFSET, true)) {
               case REQUEST_TYPES.WEBSOCKET:
                 switch (response[RESPONSE_TYPE_OFFSET]) {
                   case WEBSOCKET_REQUEST_TYPES.GET_COMPUTER_STATE:
