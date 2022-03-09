@@ -576,6 +576,8 @@ export const client = function ({
           .put(counterValue, Buffer.from(aes.encrypt(bytesCopy)), { valueEncoding: 'binary' })
           .write();
 
+        hashes.add(hash);
+
         that.emit('transfer', transferObject);
 
         connection.broadcastTransfer(bytes);
@@ -591,7 +593,7 @@ export const client = function ({
       },
 
       async importReceipt(receiptBase64) {
-        await AESCounter();
+        await AESCounter;
         const receipt = Uint8Array.from(Buffer.from(receiptBase64, 'base64'));
         const transfer = await transferObject(receipt.slice(0, TRANSFER_LENGTH));
 
@@ -612,16 +614,16 @@ export const client = function ({
 
           const receiptView = new DataView(receipt.buffer);
           const digest = new Uint8Array(HASH_LENGTH);
-          const message = receipt.subarray(0, SIGNATURE_OFFSET);
+          const message = receipt.slice(0, SIGNATURE_OFFSET);
           message[0] ^= 1;
           K12(message, digest, HASH_LENGTH);
           message[0] ^= 1;
           let offset = SIGNATURE_OFFSET;
           if (
             schnorrq.verify(
-              schnorrq.generatePublicKey(privateKey(seed, index, K12)),
+              receipt.slice(0, 32),
               digest,
-              receipt.subarray(offset, (offset += SIGNATURE_LENGTH))
+              receipt.slice(offset, (offset += SIGNATURE_LENGTH))
             ) === 1
           ) {
             const computerStateDigest = new Uint8Array(HASH_LENGTH);

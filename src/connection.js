@@ -680,7 +680,7 @@ export const connection = function ({
                             state.transferStatusComparisonRightOffsets[computorIndex] = rightOffset;
 
                             if (
-                              status >= 2 &&
+                              status >= 1 &&
                               state.processedFlags[computorIndex] === false &&
                               (state.processedFlags[computorIndex] = true)
                             ) {
