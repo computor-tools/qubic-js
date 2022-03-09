@@ -142,10 +142,12 @@ export const client = function ({
       essenceView.setUint32(0, counter, true);
       essenceView.setBigUint64(4, energy, true);
       let offset = 4 + 8;
-      hashesByIndex.forEach(function (hash) {
-        essence.set(hash, offset);
-        offset += HASH_LENGTH;
-      });
+      Array.from(hashesByIndex.values())
+        .sort()
+        .forEach(function (hash) {
+          essence.set(hash, offset);
+          offset += HASH_LENGTH;
+        });
       return essence;
     };
 
@@ -175,7 +177,7 @@ export const client = function ({
               hashesByIndex.set(counterValue, params.hashBytes);
               const energyCopy = energy;
               energy = (await id) === params.destination ? energy : energy - params.energy;
-              if (energy < 0) {
+              if (energy < 0n) {
                 energy = 0n;
               }
               const essence = databaseEssence();
@@ -487,6 +489,9 @@ export const client = function ({
           receipts.forEach(function (receipt) {
             that.emit('receipt', receipt);
           });
+        } else {
+          // TODO: emit error if signature is invalid.
+          console.log('db sig failed');
         }
       }
     };
