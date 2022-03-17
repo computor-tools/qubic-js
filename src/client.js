@@ -126,7 +126,7 @@ export const client = function ({
 
     const hashes = new Set();
     const hashesByIndex = new Map();
-    const transfers = [];
+    const transfers = new Set();
     const transferStatuses = [];
     const receipts = [];
     let counter = 0;
@@ -294,8 +294,7 @@ export const client = function ({
                     latestUnprocessedTransaction.decryptedValue = decryptedValue.slice(1);
                     latestUnprocessedTransaction.timestamp = transfer.timestamp;
                   }
-
-                  transfers.push(transfer);
+                  transfers.add(transfer);
                   const hash = bytesToShiftedHex(hashBytes).toUpperCase();
                   hashes.add(hash);
                   processTransferStatus({
@@ -449,7 +448,7 @@ export const client = function ({
 
                   hashesByIndex.set(parseInt(data.key), hashBytes);
 
-                  transfers.push(await transferObject(bytes, hashBytes));
+                  transfers.add(await transferObject(bytes, hashBytes));
                   const hash = bytesToShiftedHex(hashBytes).toUpperCase();
                   hashes.add(hash);
 
@@ -468,7 +467,7 @@ export const client = function ({
                   });
                 }
               } else {
-                console.error(`Processed Transfer DB Sig failed Verification! ${data.key}`)
+                console.error(`Processed Transfer DB Sig failed Verification! ${data.key}`);
               }
             }
           }
@@ -492,17 +491,26 @@ export const client = function ({
         ) {
           resolveAESCounter();
           that.emit('energy', energy);
+          let txferDataMap = {};
+          transfers.forEach(function (transfer) {
+            let key = `${transfer.destination}-${transfer.energy}-${transfer.timestamp}`;
+            if(txferDataMap.hasOwnProperty(key)) {
+              console.log(`Deleting duplicate transfer before send to UI: ${transfer.hash}`);
+              transfers.delete(transfer);
+            } else {
+              txferDataMap[key] = true;
+            }
+          });
           transfers.forEach(function (transfer) {
             that.emit('transfer', transfer);
           });
 
           if(latestUnprocessedTransaction.index > -1) {
             let ts = timestamp();
-            let secsElapsedSinceLastTx = (ts - latestUnprocessedTransaction.timestamp) / BigInt(1000000000);
-            console.log(`secs since last tx broadcast: ${secsElapsedSinceLastTx}`);
+            let secsElapsedSinceLastTx =
+              (ts - latestUnprocessedTransaction.timestamp) / BigInt(1000000000);
             if(secsElapsedSinceLastTx >= 60) {
-              console.log('broadcasting latest tx');
-              console.log(latestUnprocessedTransaction.decryptedValue);
+              console.log('rebroadcasting latest tx');
               connection.broadcastTransfer(latestUnprocessedTransaction.decryptedValue);
               latestUnprocessedTransaction.index = -1;
               latestUnprocessedTransaction.decryptedValue = [];
@@ -820,7 +828,7 @@ export const client = function ({
                   energy = energyCopy;
                 }
 
-                transfers.push(transfer);
+                transfers.add(transfer);
                 hashes.add(transfer.hash);
               }
             }
