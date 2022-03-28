@@ -1,13 +1,15 @@
 'use strict';
 
 import { WebSocketServer } from 'isomorphic-ws';
-import { createClient, crypto } from '../src/index.js';
 import { bytesToShiftedHex } from '../src/utils/hex.js';
+import qubic from '../src/index.js';
 import { EPOCH_LENGTH, EPOCH_OFFSET, TICK_LENGTH, TICK_OFFSET } from '../src/connection.js';
 import bigInt from 'big-integer';
 import getPort from 'get-port';
 import rimraf from 'rimraf';
 import { toString } from './utils';
+
+const { crypto } = qubic;
 
 jest.setTimeout(5 * 1000);
 
@@ -93,7 +95,7 @@ const onconnection = function (voidResponse) {
   let i = 0;
   return function (socket) {
     socket.on('message', function incoming(message) {
-      const { command, identity, hash } = JSON.parse(message);
+      const { command, identity, messageDigest, environmentDigest } = JSON.parse(message);
 
       switch (command) {
         case 1:
@@ -155,19 +157,23 @@ const onconnection = function (voidResponse) {
           }, 1000);
           break;
         case 4:
-          if (hash === 'LGGFIAGCCDAGPCCKBHKFNFICPOBJKEFONOKGCGAAHOBPPEEBCFPOANMJFJHLEDMG') {
+          if (
+            messageDigest === 'CCJFMKDDFJELKCLPMOCONMPFAKHPOOHNHIHCPINDBFIDLEPJHKPOOLHJPGIHJJND'
+          ) {
             socket.send(
               JSON.stringify({
                 command,
-                hash,
+                messageDigest,
                 reason: 'Account nonce was overwritten.',
               })
             );
-          } else if (hash === 'JJBGCAODHCGCLMPEMAMFHAIAIFGNPBFKNFLGIAJNIODILMGPHPACFDGFODHEAMJL') {
+          } else if (
+            messageDigest === 'BLIMPJJLGFFKOOPCDMIJPCEFJCBJHDFHFKEPLNOMPBAOHFKEOOPAKKBIHDKLJIDH'
+          ) {
             socket.send(
               JSON.stringify({
                 command,
-                hash,
+                messageDigest,
                 inclusionState: i++ === 0 ? false : true,
                 tick: 2,
                 epoch: 1,
@@ -177,13 +183,31 @@ const onconnection = function (voidResponse) {
             socket.send(
               JSON.stringify({
                 command,
-                hash,
-                inclusionState: hash === '1' ? false : true,
+                messageDigest,
+                inclusionState: messageDigest === '1' ? false : true,
                 tick: 2,
                 epoch: 1,
               })
             );
           }
+          break;
+        case 5:
+          socket.send(JSON.stringify({ command, epoch: 1, tick: 1, environmentDigest, data: '' }));
+          setTimeout(function () {
+            socket.send(
+              JSON.stringify({ command, epoch: 1, tick: 2, environmentDigest, data: '' })
+            );
+          }, 100);
+          setTimeout(function () {
+            socket.send(
+              JSON.stringify({ command, epoch: 2, tick: 1, environmentDigest, data: '' })
+            );
+          }, 200);
+          setTimeout(function () {
+            socket.send(
+              JSON.stringify({ command, epoch: 2, tick: 2, environmentDigest, data: '' })
+            );
+          }, 300);
       }
     });
   };
@@ -225,7 +249,7 @@ const closeServers = function (servers) {
 };
 
 describe('client.computors', function () {
-  const client = createClient({
+  const client = qubic.client({
     seed,
     index: 8000,
     computors: [
@@ -258,7 +282,7 @@ describe('client.on("info", callback) (2 of 3)', function () {
         servers[1].on('connection', onconnectionSendStatus(1, 2));
         servers[2].on('connection', onconnectionSendStatus(1, 1));
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           computors: [
             { url: 'ws://localhost:' + ports[0].toString() },
@@ -303,7 +327,7 @@ describe('client.on("info", callback) (3 of 3)', function () {
         servers[1].on('connection', onconnectionSendStatus(1, 2));
         servers[2].on('connection', onconnectionSendStatus(1, 2));
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 1,
           computors: [
@@ -350,7 +374,7 @@ describe('client.on("info", callback) (3 of 3 with 2 rounds)', function () {
         servers[1].on('connection', onconnectionSendStatus2(1, 2, 1, 3));
         servers[2].on('connection', onconnectionSendStatus2(1, 2, 1, 3));
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 2,
           computors: [
@@ -401,7 +425,7 @@ describe('client.on("info", callback) (2 of 3 with 1 invalid signature)', functi
         servers[1].on('connection', onconnectionSendStatus(1, 2));
         servers[2].on('connection', onconnectionSendStatus(1, 2));
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 3,
           computors: [
@@ -448,7 +472,7 @@ describe('client.on("info", callback) (1 of 3)', function () {
         servers[1].on('connection', onconnectionSendStatus(1, 1));
         servers[2].on('connection', onconnectionSendStatus(1, 0));
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 4,
           computors: [
@@ -492,7 +516,7 @@ describe('client.on("info", callback) (inactive)', function () {
         servers[1].on('connection', onconnectionSendStatus(1, 2));
         servers[2].on('connection', onconnectionSendStatus(1, 2));
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 5,
           computors: [
@@ -541,7 +565,7 @@ describe('client.sendCommand - 1 = fetch identityNonce (2 of 3)', function () {
         servers[1].on('connection', onconnection(true));
         servers[2].on('connection', onconnection());
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 6,
           computors: [
@@ -576,7 +600,7 @@ describe('client.sendCommand - 1 = fetch identityNonce (1 of 3)', function () {
         servers[1].on('connection', onconnection(1));
         servers[2].on('connection', onconnection(2));
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 7,
           computors: [
@@ -618,7 +642,7 @@ describe('client.sendCommand - 1 = fetch identityNonce (2 of 3 with reconnect)',
         .then(function ({ servers, ports }) {
           servers[0].on('connection', onconnection());
 
-          const client = createClient({
+          const client = qubic.client({
             seed,
             index: 8,
             computors: [
@@ -660,7 +684,7 @@ describe('client.sendCommand - 1 = fetch identityNonce (2 of 3 with double call)
         servers[0].on('connection', onconnection());
         servers[1].on('connection', onconnection(1));
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 9,
           computors: [
@@ -698,7 +722,7 @@ describe('client.sendCommand - 1 = fetch identityNonce (2 of 3 with faulty conne
         servers[1].on('connection', onFaultyConnection);
         servers[2].on('connection', onconnection());
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 10,
           computors: [
@@ -733,7 +757,7 @@ describe('client.sendCommand - 2 = fetch energy (2 of 3)', function () {
         servers[1].on('connection', onconnection(1));
         servers[2].on('connection', onconnection());
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 11,
           computors: [
@@ -758,14 +782,14 @@ describe('client.sendCommand - 2 = fetch energy (2 of 3)', function () {
   });
 });
 
-describe('client.createTransfer, client.sendCommand - 3 = send transfer', function () {
+describe('client.transaction, client.sendCommand - 3 = send transfer', function () {
   const clientAndServers = crypto.then(function ({ schnorrq }) {
     return openServers().then(function ({ servers, ports }) {
       servers[0].on('connection', onconnection());
       servers[1].on('connection', onconnection(1));
       servers[2].on('connection', onconnection());
       return [
-        createClient({
+        qubic.client({
           seed,
           index: 1337,
           computors: [
@@ -786,17 +810,17 @@ describe('client.createTransfer, client.sendCommand - 3 = send transfer', functi
     should: 'resolve with correct transfer',
     awaitActual: clientAndServers.then(function ([client]) {
       client.on('error', function () {});
-      return client.createTransfer({
-        identity: 'DCMJGMELMPBOJCCOFAICMJCBKENNOPEJCLIPBKKKDKLDOMKFBPOFHFLGAHLNAFMKMHHOAE',
+      return client.transaction({
+        recipientIdentity: 'DCMJGMELMPBOJCCOFAICMJCBKENNOPEJCLIPBKKKDKLDOMKFBPOFHFLGAHLNAFMKMHHOAE',
         energy: bigInt(1),
       });
     }),
     expected: {
-      hash: 'JJBGCAODHCGCLMPEMAMFHAIAIFGNPBFKNFLGIAJNIODILMGPHPACFDGFODHEAMJL',
+      messageDigest: 'BLIMPJJLGFFKOOPCDMIJPCEFJCBJHDFHFKEPLNOMPBAOHFKEOOPAKKBIHDKLJIDH',
       message:
-        'MslsS88eki5QgskhpN3vSSuPGqo6s+ylH+V1tge9BcoAAAAAMslsS88eki5QgskhpN3vSSuPGqo6s+ylH+V1tge9BcoB',
+        'MslsS88eki5QgskhpN3vSSuPGqo6s+ylH+V1tge9BcoAAAAAAQAAAAAAAAAyyWxLzx6SLlCCySGk3e9JK48aqjqz7KUf5XW2B70Fyg==',
       signature:
-        'ZhLgXQXH9JyMMekNaM+4A1c0b21cWMZhfkITReMuK8w7a+vI8wOpFCha0DuTjErUQDI3iC9MUlx519RxSKEKAA==',
+        'xoe0T0EUtCrIG7W5XlFSXKxNT3E+XxqYSWHzUId8Fawm9R+yTLP9NSFwN6l56GnCABl6sq6p5nVM06RSzoEgAA==',
     },
   });
 
@@ -811,7 +835,7 @@ describe('client.createTransfer, client.sendCommand - 3 = send transfer', functi
       });
     }),
     expected: {
-      hash: 'JJBGCAODHCGCLMPEMAMFHAIAIFGNPBFKNFLGIAJNIODILMGPHPACFDGFODHEAMJL',
+      messageDigest: 'BLIMPJJLGFFKOOPCDMIJPCEFJCBJHDFHFKEPLNOMPBAOHFKEOOPAKKBIHDKLJIDH',
       inclusionState: true,
       tick: 2,
       epoch: 1,
@@ -819,8 +843,8 @@ describe('client.createTransfer, client.sendCommand - 3 = send transfer', functi
   });
 
   clientAndServers.then(function ([client]) {
-    client.createTransfer({
-      identity: 'DCMJGMELMPBOJCCOFAICMJCBKENNOPEJCLIPBKKKDKLDOMKFBPOFHFLGAHLNAFMKMHHOAE',
+    client.transaction({
+      recipientIdentity: 'DCMJGMELMPBOJCCOFAICMJCBKENNOPEJCLIPBKKKDKLDOMKFBPOFHFLGAHLNAFMKMHHOAE',
       energy: bigInt(0),
     });
   });
@@ -836,8 +860,73 @@ describe('client.createTransfer, client.sendCommand - 3 = send transfer', functi
       });
     }),
     expected: {
-      hash: 'LGGFIAGCCDAGPCCKBHKFNFICPOBJKEFONOKGCGAAHOBPPEEBCFPOANMJFJHLEDMG',
+      messageDigest: 'CCJFMKDDFJELKCLPMOCONMPFAKHPOOHNHIHCPINDBFIDLEPJHKPOOLHJPGIHJJND',
       reason: 'Account nonce was overwritten.',
+    },
+  });
+
+  assert({
+    given: 'insufficient energy',
+    should: 'reject with correct error',
+    awaitActual: clientAndServers.then(function ([client]) {
+      client.on('error', function () {});
+      return toString(
+        Try(client.transaction, {
+          recipientIdentity:
+            'DCMJGMELMPBOJCCOFAICMJCBKENNOPEJCLIPBKKKDKLDOMKFBPOFHFLGAHLNAFMKMHHOAE',
+          energy: bigInt(10000000),
+        })
+      );
+    }),
+    expected: 'Error: Insufficient energy.',
+  });
+
+  afterAll(function () {
+    clientAndServers.then(function ([client, servers]) {
+      client.terminate();
+      closeServers(servers);
+      client.identity.then(rimraf.sync);
+    });
+  });
+});
+
+describe('client.transaction (send effect)', function () {
+  const clientAndServers = crypto.then(function ({ schnorrq }) {
+    return openServers().then(function ({ servers, ports }) {
+      servers[0].on('connection', onconnection());
+      servers[1].on('connection', onconnection(1));
+      servers[2].on('connection', onconnection());
+      return [
+        qubic.client({
+          seed,
+          index: 1338,
+          computors: [
+            { url: 'ws://localhost:' + ports[0].toString() },
+            { url: 'ws://localhost:' + ports[1].toString() },
+            { url: 'ws://localhost:' + ports[2].toString() },
+          ],
+          synchronizationInterval: 10000,
+          adminPublicKey: bytesToShiftedHex(schnorrq.generatePublicKey(secretKey)),
+        }),
+        servers,
+      ];
+    });
+  });
+
+  assert({
+    given: 'effect payload',
+    should: 'resolve with correct transaction',
+    awaitActual: clientAndServers.then(function ([client]) {
+      return client.transaction({
+        effectPayload: new Uint8Array(10).fill(1),
+      });
+    }),
+    expected: {
+      messageDigest: 'MGHOIOGNIGCJJAOOBCPKMJLIGGNIGDLHHLEJOFEJCBOKDLNAONBEFJDBAPCHGEFD',
+      message:
+        'oa9OKe9epqF9d2p97FZCBMDkGpAWKSEjfHt6fLp+8soAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEBAQEBAQEBAQE=',
+      signature:
+        'fXll7vTIuaPvxuIr0eyQbELdjWP9oI+jIDDwbXKPBnSQVBjypBGlapJfIligClx35nEUG5XRH0GjHVQCmKEkAA==',
     },
   });
 
@@ -860,7 +949,7 @@ describe('client.sendCommand - 4 = fetch transfer status (2 of 3)', function () 
         servers[1].on('connection', onconnection(1));
         servers[2].on('connection', onconnection());
 
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 12,
           computors: [
@@ -873,7 +962,7 @@ describe('client.sendCommand - 4 = fetch transfer status (2 of 3)', function () 
         });
         client.on('error', function () {});
 
-        return client.sendCommand(4, { hash: '1' }).then(function (actual) {
+        return client.sendCommand(4, { messageDigest: '1' }).then(function (actual) {
           client.terminate();
           closeServers(servers);
           client.identity.then(rimraf.sync);
@@ -881,7 +970,7 @@ describe('client.sendCommand - 4 = fetch transfer status (2 of 3)', function () 
         });
       });
     }),
-    expected: { command: 4, hash: '1', inclusionState: false, tick: 2, epoch: 1 },
+    expected: { command: 4, messageDigest: '1', inclusionState: false, tick: 2, epoch: 1 },
   });
 });
 
@@ -891,7 +980,7 @@ describe('client.sendCommand - 4 = fetch transfer status (2 of 3 with relaunch)'
     should: 'resolve with correct transfer status',
     awaitActual: crypto.then(function ({ schnorrq }) {
       return openServers().then(function ({ servers, ports }) {
-        const client = createClient({
+        const client = qubic.client({
           seed,
           index: 13,
           computors: [
@@ -912,7 +1001,7 @@ describe('client.sendCommand - 4 = fetch transfer status (2 of 3 with relaunch)'
             servers[1].on('connection', onconnection(1));
             servers[2].on('connection', onconnection());
 
-            return client.sendCommand(4, { hash: '2' }).then(function (actual) {
+            return client.sendCommand(4, { messageDigest: '2' }).then(function (actual) {
               client.terminate();
               closeServers(servers);
               client.identity.then(rimraf.sync);
@@ -921,7 +1010,76 @@ describe('client.sendCommand - 4 = fetch transfer status (2 of 3 with relaunch)'
           });
       });
     }),
-    expected: { command: 4, hash: '2', inclusionState: true, tick: 2, epoch: 1 },
+    expected: { command: 4, messageDigest: '2', inclusionState: true, tick: 2, epoch: 1 },
+  });
+});
+
+describe('client.addEnvironmentListener/removeEnvironmentListener', function () {
+  assert({
+    given: 'a subscription',
+    should: 'emit correct events',
+    awaitActual: crypto.then(function ({ schnorrq }) {
+      return openServers().then(function ({ servers, ports }) {
+        servers[0].on('connection', onconnection());
+        servers[1].on('connection', onconnection());
+        servers[2].on('connection', onconnection());
+        const client = qubic.client({
+          seed,
+          index: 14,
+          computors: [
+            { url: 'ws://localhost:' + ports[0].toString() },
+            { url: 'ws://localhost:' + ports[1].toString() },
+            { url: 'ws://localhost:' + ports[2].toString() },
+          ],
+          synchronizationInterval: 1000,
+          adminPublicKey: bytesToShiftedHex(schnorrq.generatePublicKey(secretKey)),
+        });
+        client.on('error', function () {});
+
+        return new Promise(function (resolve) {
+          const data = [];
+          const listener2 = function () {};
+          const listener = function (value) {
+            data.push(value);
+            if (data.length === 3) {
+              client.removeEnvironmentListener('H', listener);
+              client.removeEnvironmentListener('H', listener2);
+            }
+          };
+          client.addEnvironmentListener('H', listener);
+          client.addEnvironmentListener('H', listener2);
+          client.sendCommand(5, { environmentDigest: 'H' });
+          setTimeout(function () {
+            resolve(data);
+          }, 1000);
+        }).then(function (result) {
+          client.terminate();
+          closeServers(servers);
+          client.identity.then(rimraf.sync);
+          return result;
+        });
+      });
+    }),
+    expected: [
+      {
+        environmentDigest: 'H',
+        epoch: 1,
+        tick: 1,
+        data: '',
+      },
+      {
+        environmentDigest: 'H',
+        epoch: 1,
+        tick: 2,
+        data: '',
+      },
+      {
+        environmentDigest: 'H',
+        epoch: 2,
+        tick: 1,
+        data: '',
+      },
+    ],
   });
 });
 
@@ -931,9 +1089,9 @@ describe('client.setComputorUrl', function () {
     should: 'reopen connections',
     awaitActual: crypto.then(function ({ schnorrq }) {
       return openServers().then(function ({ servers, ports }) {
-        const client = createClient({
+        const client = qubic.client({
           seed,
-          index: 14,
+          index: 15,
           computors: [
             { url: 'ws://localhost' },
             { url: 'ws://localhost' },
@@ -972,9 +1130,9 @@ describe('client.setComputorUrl', function () {
     should: 'not reopen connection',
     awaitActual: crypto.then(function ({ schnorrq }) {
       return openServers().then(function ({ servers, ports }) {
-        const client = createClient({
+        const client = qubic.client({
           seed,
-          index: 15,
+          index: 16,
           computors: [
             { url: 'ws://localhost:' + ports[0].toString() },
             { url: 'ws://localhost:' + ports[1].toString() },

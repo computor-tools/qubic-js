@@ -1,114 +1,161 @@
 'use strict';
 
-import bigInt from 'big-integer';
 import {
   PUBLIC_KEY_LENGTH,
   PUBLIC_KEY_LENGTH_IN_HEX,
   privateKey,
   verifyChecksum,
+  addChecksum,
 } from './identity.js';
-import { shiftedHexToBytes, bytesToShiftedHex, hexToBytes } from './utils/hex.js';
+import { shiftedHexToBytes, bytesToShiftedHex } from './utils/hex.js';
 import { crypto } from './crypto/index.js';
+import { timestamp } from './timestamp.js';
 
-export const FROM_IDENTITY_OFFSET = 0;
-export const IDENTITY_NONCE_OFFSET = FROM_IDENTITY_OFFSET + PUBLIC_KEY_LENGTH;
-export const IDENTITY_NONCE_LENGTH = 4;
-export const TO_IDENTITY_OFFSET = IDENTITY_NONCE_OFFSET + IDENTITY_NONCE_LENGTH;
-export const ENERGY_OFFSET = TO_IDENTITY_OFFSET + PUBLIC_KEY_LENGTH;
-export const HASH_LENGTH = 32;
+export const SOURCE_OFFSET = 0;
+export const SOURCE_LENGTH = PUBLIC_KEY_LENGTH;
+export const DESTINATION_OFFSET = SOURCE_OFFSET + SOURCE_LENGTH;
+export const DESTINATION_LENGTH = PUBLIC_KEY_LENGTH;
+export const TIMESTAMP_OFFSET = DESTINATION_OFFSET + DESTINATION_LENGTH;
+export const TIMESTAMP_LENGTH = 8;
+export const ENERGY_OFFSET = TIMESTAMP_OFFSET + TIMESTAMP_LENGTH;
+export const ENERGY_LENGTH = 8;
+export const SIGNATURE_OFFSET = ENERGY_OFFSET + ENERGY_LENGTH;
+export const SIGNATURE_LENGTH = 64;
+
+export const TRANSFER_LENGTH = SIGNATURE_OFFSET + SIGNATURE_LENGTH;
+
+export const HASH_LENGTH = 32; // 256-bit output for 128-bit collision security (see 4.1 of https://eprint.iacr.org/2016/770.pdf).
+
+export const MIN_ENERGY_AMOUNT = 1000000n;
 
 /**
- * Creates a transfer of energy between 2 entities.
+ * @typedef {object} TransferParams
+ * @property {string} seed - Seed in 55 lowercase latin chars.
+ * @property {number} index - Index of private key which was used to derive sender identity.
+ * @property {string} sourceIdentity - Source identity in uppercase hex.
+ * @property {string} destinationIdentity - Destination identity in uppercase hex.
+ * @property {bigint} energy - Transferred energy to recipient identity.
+ */
+
+/**
+ * Creates a transaction which includes a transfer of energy between 2 entities,
+ * or an effect, or both. Transaction is atomic, meaaning that both transfer and
+ * effect will be proccessed or none.
  *
- * @function createTransfer
+ * @function transfer
  * @memberof module:qubic
- * @param {object} params
- * @param {string} params.seed - Seed in 55 lowercase latin chars.
- * @param {object} params.from
- * @param {string} params.from.identity - Sender identity in uppercase hex.
- * @param {number} params.from.index - Index of private key which was used to derive sender identity.
- * @param {number} params.from.identityNonce - Identity nonce.
- * @param {bigint} params.from.enery - Energy of sender identity.
- * @param {object} params.to
- * @param {string} params.to.identity - Recipient identity in uppercase hex.
- * @param {bigint} params.to.energy - Transferred energy to recipient identity.
+ * @param {TransferParams} params
  * @returns {Promise<object>}
- * @example import { createTransfer } from 'qubic-js';
+ * @example import qubic from 'qubic-js';
  *
- * createTransfer({
- *   seed: 'vmscmtbcqjbqyqcckegsfdsrcgjpeejobolmimgorsqwgupzhkevreu',
- *   from: {
- *     identity: '9F6ADD0C591DBB8C0CE1EDF6F63A9E1C7BD22CFBD20DE1469ADAA76A9C0023707BE416',
+ * qubic
+ *   .transaction({
+ *     seed: 'vmscmtbcqjbqyqcckegsfdsrcgjpeejobolmimgorsqwgupzhkevreu',
  *     index: 1337,
+ *     sourceIdentity: 'DCMJGMELMPBOJCCOFAICMJCBKENNOPEJCLIPBKKKDKLDOMKFBPOFHFLGAHLNAFMKMHHOAE',
+ *     destinationIdentity: 'BPFJANADOGBDLNNONDILEMAICAKMEEGBFPJBKPBCEDFJIALDONODMAIMDBFKCFEEMEOLFK',
  *     identityNonce: 0,
- *     energy: bigInt(2),
- *   },
- *   to: {
- *     identity: 'CD5B4A78521A9F9428F442E60E25DA63247817AB6BBF406CC91393F6664E38CBFE68DC',
- *     energy: bigInt(1),
- *   },
- * })
- *   .then(function (transfer) {
- *     console.log(transfer);
+ *     energy: qubic.energy(1),
+ *   })
+ *   .then(function (transaction) {
+ *     console.log(transaction);
  *   })
  *   .catch(function (error) {
  *     console.log(error.message);
  *   });
  *
  */
-export const createTransfer = async function ({ seed, from, to }) {
-  if ((await verifyChecksum(from.identity)) === false) {
-    throw new Error(`Invalid checksum: ${from.identity}`);
-  }
-  if ((await verifyChecksum(to.identity)) === false) {
-    throw new Error(`Invalid checksum: ${to.identity}`);
+export const transfer = async function ({ seed, index, source, destination, energy }) {
+  if ((await verifyChecksum(source)) === false) {
+    throw new Error(`Invalid checksum: ${source}`);
   }
 
-  if (!Number.isInteger(from.index) || from.index < 0) {
-    throw new Error('Illegal index.');
+  if (index !== undefined) {
+    if (!Number.isInteger(index) || index < 0) {
+      throw new Error('Illegal index.');
+    }
   }
 
-  if (!Number.isInteger(from.identityNonce)) {
-    throw new Error('Illegal nonce.');
+  if ((await verifyChecksum(destination)) === false) {
+    throw new Error(`Invalid checksum: ${destination}`);
   }
-
-  if (
-    (from.energy !== undefined && !(from.energy instanceof bigInt)) ||
-    !(to.energy instanceof bigInt)
-  ) {
+  if (BigInt(energy) < MIN_ENERGY_AMOUNT) {
     throw new Error('Illegal energy.');
   }
 
-  if (from.energy !== undefined && from.energy.minus(to.energy).lesser(bigInt.zero)) {
-    throw new Error('Insufficient energy.');
-  }
+  const transferAndSignature = new Uint8Array(
+    SOURCE_LENGTH + DESTINATION_LENGTH + TIMESTAMP_LENGTH + ENERGY_LENGTH + SIGNATURE_LENGTH
+  );
+  const transferAndSignatureView = new DataView(transferAndSignature.buffer);
 
-  const energyBytes = Uint8Array.from(hexToBytes(to.energy.toString(16)));
-  const message = new Uint8Array(
-    PUBLIC_KEY_LENGTH * 2 + IDENTITY_NONCE_LENGTH + energyBytes.length
+  const publicKey = shiftedHexToBytes(source.slice(0, PUBLIC_KEY_LENGTH_IN_HEX).toLowerCase());
+  transferAndSignature.set(publicKey, SOURCE_OFFSET);
+
+  transferAndSignature.set(
+    shiftedHexToBytes(destination.slice(0, PUBLIC_KEY_LENGTH_IN_HEX).toLowerCase()),
+    DESTINATION_OFFSET
   );
-  const publicKey = shiftedHexToBytes(
-    from.identity.slice(0, PUBLIC_KEY_LENGTH_IN_HEX).toLowerCase()
-  );
-  message.set(publicKey);
-  const buffer = new ArrayBuffer(IDENTITY_NONCE_LENGTH);
-  const view = new DataView(buffer);
-  view.setUint32(0, from.identityNonce);
-  message.set(Uint8Array.from(buffer), IDENTITY_NONCE_OFFSET);
-  message.set(
-    shiftedHexToBytes(to.identity.slice(0, PUBLIC_KEY_LENGTH_IN_HEX).toLowerCase()),
-    TO_IDENTITY_OFFSET
-  );
-  message.set(energyBytes, ENERGY_OFFSET);
+
+  const ts = timestamp();
+  transferAndSignatureView.setBigUint64(TIMESTAMP_OFFSET, ts, true);
+
+  transferAndSignatureView.setBigUint64(ENERGY_OFFSET, BigInt(energy), true);
 
   const { schnorrq, K12 } = await crypto;
-  const hash = new Uint8Array(HASH_LENGTH);
-  K12(message, hash, HASH_LENGTH);
-  return {
-    hash: bytesToShiftedHex(hash).toUpperCase(),
-    message: Buffer.from(message).toString('base64'),
+  const digest = new Uint8Array(HASH_LENGTH);
+  transferAndSignature[0] ^= 1;
+  K12(transferAndSignature.subarray(SOURCE_OFFSET, SIGNATURE_OFFSET), digest, HASH_LENGTH);
+  transferAndSignature[0] ^= 1;
+  const signature = schnorrq.sign(privateKey(seed, index || 0, K12), publicKey, digest);
+  transferAndSignature.set(signature, SIGNATURE_OFFSET);
+
+  const hashBytes = new Uint8Array(HASH_LENGTH);
+  K12(transferAndSignature, hashBytes, HASH_LENGTH);
+
+  const transferObj = {
+    bytes: transferAndSignature,
+    hashBytes,
+    hash: bytesToShiftedHex(hashBytes).toUpperCase(),
+    source,
+    destination,
+    timestamp: ts,
+    energy: BigInt(energy),
+    signature: Buffer.from(signature).toString('base64'),
+  };
+
+  Object.freeze(transferObj);
+
+  return transferObj;
+};
+
+export const transferObject = async function (transfer, hashBytes) {
+  const transferView = new DataView(transfer.buffer);
+
+  if (hashBytes === undefined) {
+    hashBytes = new Uint8Array(HASH_LENGTH);
+    (await crypto).K12(transfer.slice(), hashBytes, HASH_LENGTH);
+  }
+
+  const transferObj = {
+    bytes: transfer.slice(),
+    hashBytes,
+    hash: bytesToShiftedHex(hashBytes).toUpperCase(),
+    source: bytesToShiftedHex(
+      await addChecksum(transfer.subarray(SOURCE_OFFSET, SOURCE_OFFSET + SOURCE_LENGTH))
+    ).toUpperCase(),
+    destination: bytesToShiftedHex(
+      await addChecksum(
+        transfer.subarray(DESTINATION_OFFSET, DESTINATION_OFFSET + DESTINATION_LENGTH)
+      )
+    ).toUpperCase(),
+    timestamp: transferView.getBigUint64(TIMESTAMP_OFFSET, true),
+    energy: transferView.getBigUint64(ENERGY_OFFSET, true),
     signature: Buffer.from(
-      schnorrq.sign(privateKey(seed, from.index, K12), publicKey, message)
+      transfer.subarray(SIGNATURE_OFFSET, SIGNATURE_OFFSET + SIGNATURE_LENGTH)
     ).toString('base64'),
   };
+
+  Object.freeze(transferObj);
+
+  return transferObj;
 };

@@ -11,7 +11,7 @@ export const PUBLIC_KEY_LENGTH_IN_HEX = PUBLIC_KEY_LENGTH * HEX_CHARS_PER_BYTE;
 export const CHECKSUM_LENGTH = 3;
 const SEED_CHECKSUM_LENGTH = 1.5;
 
-const seedToBytes = function (seed) {
+export const seedToBytes = function (seed) {
   const bytes = new Uint8Array(seed.length);
   for (let i = 0; i < seed.length; i++) {
     bytes[i] = SEED_ALPHABET.indexOf(seed[i]);
@@ -30,8 +30,7 @@ const seedToBytes = function (seed) {
  * @returns {Uint8Array} Private key bytes.
  */
 export const privateKey = function (seed, index, K12) {
-  seed = seedToBytes(seed);
-  const preimage = seed.slice();
+  const preimage = seedToBytes(seed);
 
   while (index-- > 0) {
     for (let i = 0; i < preimage.length; i++) {
@@ -51,13 +50,13 @@ export const privateKey = function (seed, index, K12) {
 /**
  * Creates an identity with checksum.
  *
- * @function createIdentity
+ * @function identity
  * @memberof module:qubic
  * @param {string} seed - Seed in 55 lowercase latin chars.
  * @param {number} index - Identity index.
  * @returns {Promise<string>} Identity with checksum in uppercase hex.
  */
-export const createIdentity = function (seed, index) {
+export const identity = function (seed, index) {
   if (!new RegExp(`^[a-z]{${SEED_IN_LOWERCASE_LATIN_LENGTH}}$`).test(seed)) {
     throw new Error(
       `Invalid seed. Must be ${SEED_IN_LOWERCASE_LATIN_LENGTH} lowercase latin chars.`
@@ -79,6 +78,18 @@ export const createIdentity = function (seed, index) {
     );
     return bytesToShiftedHex(publicKeyWithChecksum).toUpperCase();
   });
+};
+
+export const addChecksum = async function (identity) {
+  const identityWithChecksum = new Uint8Array(PUBLIC_KEY_LENGTH + CHECKSUM_LENGTH);
+  identityWithChecksum.set(identity.slice(0, PUBLIC_KEY_LENGTH));
+  (await crypto).K12(
+    identity.subarray(0, PUBLIC_KEY_LENGTH),
+    identityWithChecksum,
+    CHECKSUM_LENGTH,
+    PUBLIC_KEY_LENGTH
+  );
+  return identityWithChecksum;
 };
 
 /**
@@ -119,3 +130,37 @@ export const seedChecksum = function (seed) {
       .toUpperCase();
   });
 };
+
+// const sA = 'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabc';
+// const sB = 'cbazyxwvutsrqponmlkjihgfedcbazyxwvutsrqponmlkjihgfedcba';
+
+// crypto.then(function ({ K12, kex, schnorrq }) {
+//   const skA = privateKey(sA, 0, K12);
+//   const skB = privateKey(sB, 0, K12);
+
+//   console.log('seed of Alice:', sA);
+//   console.log('seed of Bob:', sB);
+
+//   console.log('private key of Alice:', skA);
+
+//   createIdentity(sA, 0).then(function (idA) {
+//     console.log('identity of Alice:', idA);
+
+//     const hSkB = new Uint8Array(64);
+//     K12(skB, hSkB, 64);
+//     const shk = kex.compressedSecretAgreement(hSkB, schnorrq.generatePublicKey(skA));
+//     console.log('shared secret:', shk);
+
+//     const hSkA = new Uint8Array(64);
+//     K12(skA, hSkA, 64);
+//     const shk2 = kex.compressedSecretAgreement(hSkA, schnorrq.generatePublicKey(skB));
+//     console.log(shk2);
+
+//     const message = Buffer.from('z'.repeat(135));
+
+//     console.log(
+//       'signature of Alice:',
+//       schnorrq.sign(skA, schnorrq.generatePublicKey(skA), Uint8Array.from(message))
+//     );
+//   });
+// });

@@ -29,13 +29,13 @@ import * as qubic from 'qubic-js';
 
 * [qubic](#module_qubic)
     * [.exports.crypto](#module_qubic.exports.crypto) : [<code>Promise.&lt;Crypto&gt;</code>](#Crypto)
-    * [.createClient(options)](#module_qubic.createClient) ⇒ [<code>Client</code>](#Client)
-    * [.createConnection(params)](#module_qubic.createConnection) ⇒ [<code>Connection</code>](#Connection)
+    * [.client(options)](#module_qubic.client) ⇒ [<code>Client</code>](#Client)
+    * [.connection(params)](#module_qubic.connection) ⇒ [<code>Connection</code>](#Connection)
     * [.privateKey(seed, index, K12)](#module_qubic.privateKey) ⇒ <code>Uint8Array</code>
-    * [.createIdentity(seed, index)](#module_qubic.createIdentity) ⇒ <code>Promise.&lt;string&gt;</code>
+    * [.identity(seed, index)](#module_qubic.identity) ⇒ <code>Promise.&lt;string&gt;</code>
     * [.verifyChecksum(identity)](#module_qubic.verifyChecksum) ⇒ <code>Promise.&lt;boolean&gt;</code>
     * [.seedChecksum(seed)](#module_qubic.seedChecksum) ⇒ <code>Promise.&lt;string&gt;</code>
-    * [.createTransfer(params)](#module_qubic.createTransfer) ⇒ <code>Promise.&lt;object&gt;</code>
+    * [.transaction(params)](#module_qubic.transaction) ⇒ [<code>Promise.&lt;Transaction&gt;</code>](#Transaction)
 
 
 <br><a name="module_qubic.exports.crypto"></a>
@@ -44,9 +44,9 @@ import * as qubic from 'qubic-js';
 > A promise which always resolves to object with crypto functions.
 
 
-<br><a name="module_qubic.createClient"></a>
+<br><a name="module_qubic.client"></a>
 
-### qubic.createClient(options) ⇒ [<code>Client</code>](#Client)
+### qubic.client(options) ⇒ [<code>Client</code>](#Client)
 **Emits**: [<code>info</code>](#Connection+event_info), [<code>open</code>](#Connection+event_open), [<code>close</code>](#Connection+event_close), [<code>error</code>](#Connection+event_error), [<code>inclusion</code>](#Client+event_inclusion), [<code>rejection</code>](#Client+event_rejection)  
 
 | Param | Type | Default | Description |
@@ -61,14 +61,14 @@ import * as qubic from 'qubic-js';
 | [options.synchronizationInterval] | <code>number</code> |  | If no new tick appears after this interval an info event is emitted with updated sync status. Ignored when connection option is used. |
 | [options.adminPublicKey] | <code>string</code> |  | Admin public key, for verification of current epoch and tick which are signed by admin. Ignored when connection option is used. |
 | [options.reconnectTimeoutDuration] | <code>number</code> | <code>100</code> | Reconnect timeout duration. Ignored when connection option is used. |
-| [options.db] | <code>object</code> |  | Database implementing the [level interface](https://github.com/Level/level), for storing transfers. |
+| [options.db] | <code>object</code> |  | Database implementing the [level interface](https://github.com/Level/level), for storing transactions. |
 | [options.dbPath] | <code>string</code> |  | Database path. |
 
 **Example**  
 ```js
-import { createClient } from 'qubic-js';
+import qubic from 'qubic-js';
 
-const client = createClient({
+const client = qubic.client({
   seed: 'vmscmtbcqjbqyqcckegsfdsrcgjpeejobolmimgorsqwgupzhkevreu',
   computors: [
     { url: 'wss://AA.computor.com' },
@@ -85,9 +85,9 @@ client.addListener('error', function (error) {
 client.addListener('info', console.log);
 ```
 
-<br><a name="module_qubic.createConnection"></a>
+<br><a name="module_qubic.connection"></a>
 
-### qubic.createConnection(params) ⇒ [<code>Connection</code>](#Connection)
+### qubic.connection(params) ⇒ [<code>Connection</code>](#Connection)
 **Emits**: [<code>info</code>](#Connection+event_info), [<code>open</code>](#Connection+event_open), [<code>close</code>](#Connection+event_close), [<code>error</code>](#Connection+event_error)  
 
 | Param | Type | Default | Description |
@@ -102,9 +102,9 @@ client.addListener('info', console.log);
 
 **Example**  
 ```js
-import { createConnection } from 'qubic-js';
+import qubic from 'qubic-js';
 
-const connection = createConnection({
+const connection = qubic.connection({
   computors: [
     { url: 'wss://AA.computor.com' },
     { url: 'wss://AB.computor.com' },
@@ -134,9 +134,9 @@ connection.addListener('info', console.log);
 | K12 | [<code>K12</code>](#Crypto.K12) | K12 function. |
 
 
-<br><a name="module_qubic.createIdentity"></a>
+<br><a name="module_qubic.identity"></a>
 
-### qubic.createIdentity(seed, index) ⇒ <code>Promise.&lt;string&gt;</code>
+### qubic.identity(seed, index) ⇒ <code>Promise.&lt;string&gt;</code>
 > Creates an identity with checksum.
 
 **Returns**: <code>Promise.&lt;string&gt;</code> - Identity with checksum in uppercase hex.  
@@ -168,44 +168,33 @@ connection.addListener('info', console.log);
 | seed | <code>string</code> | Seed in 55 lowercase latin chars. |
 
 
-<br><a name="module_qubic.createTransfer"></a>
+<br><a name="module_qubic.transaction"></a>
 
-### qubic.createTransfer(params) ⇒ <code>Promise.&lt;object&gt;</code>
-> Creates a transfer of energy between 2 entities.
+### qubic.transaction(params) ⇒ [<code>Promise.&lt;Transaction&gt;</code>](#Transaction)
+> Creates a transaction which includes a transfer of energy between 2 entities,
+> or an effect, or both. Transaction is atomic, meaaning that both transfer and
+> effect will be proccessed or none.
 
 
-| Param | Type | Description |
-| --- | --- | --- |
-| params | <code>object</code> |  |
-| params.seed | <code>string</code> | Seed in 55 lowercase latin chars. |
-| params.from | <code>object</code> |  |
-| params.from.identity | <code>string</code> | Sender identity in uppercase hex. |
-| params.from.index | <code>number</code> | Index of private key which was used to derive sender identity. |
-| params.from.identityNonce | <code>number</code> | Identity nonce. |
-| params.from.enery | <code>bigint</code> | Energy of sender identity. |
-| params.to | <code>object</code> |  |
-| params.to.identity | <code>string</code> | Recipient identity in uppercase hex. |
-| params.to.energy | <code>bigint</code> | Transferred energy to recipient identity. |
+| Param | Type |
+| --- | --- |
+| params | [<code>TransferParams</code>](#TransferParams), [<code>EffectParams</code>](#EffectParams), [<code>TransferAndEffectParams</code>](#TransferAndEffectParams) | 
 
 **Example**  
 ```js
-import { createTransfer } from 'qubic-js';
+import qubic from 'qubic-js';
 
-createTransfer({
-  seed: 'vmscmtbcqjbqyqcckegsfdsrcgjpeejobolmimgorsqwgupzhkevreu',
-  from: {
-    identity: '9F6ADD0C591DBB8C0CE1EDF6F63A9E1C7BD22CFBD20DE1469ADAA76A9C0023707BE416',
+qubic
+  .transaction({
+    seed: 'vmscmtbcqjbqyqcckegsfdsrcgjpeejobolmimgorsqwgupzhkevreu',
+    senderIdentity: 'DCMJGMELMPBOJCCOFAICMJCBKENNOPEJCLIPBKKKDKLDOMKFBPOFHFLGAHLNAFMKMHHOAE',
     index: 1337,
     identityNonce: 0,
-    energy: bigInt(2),
-  },
-  to: {
-    identity: 'CD5B4A78521A9F9428F442E60E25DA63247817AB6BBF406CC91393F6664E38CBFE68DC',
-    energy: bigInt(1),
-  },
-})
-  .then(function (transfer) {
-    console.log(transfer);
+    recipientIdentity: 'BPFJANADOGBDLNNONDILEMAICAKMEEGBFPJBKPBCEDFJIALDONODMAIMDBFKCFEEMEOLFK',
+    energy: qubic.energy(1),
+  })
+  .then(function (transaction) {
+    console.log(transaction);
   })
   .catch(function (error) {
     console.log(error.message);
@@ -223,11 +212,13 @@ createTransfer({
         * ["rejection"](#Client+event_rejection)
     * _static_
         * [.identity](#Client.identity) : <code>string</code>
-        * [.createTransfer(to)](#Client.createTransfer) ⇒ <code>object</code>
+        * [.transaction(params)](#Client.transaction) ⇒ [<code>Transaction</code>](#Transaction)
+        * [.addEnvironmentListener(environment, listener)](#Client.addEnvironmentListener)
+        * [.removeEnvironmentListener(environment, listener)](#Client.removeEnvironmentListener)
         * [.terminate([options])](#Client.terminate)
         * [.launch()](#Client.launch)
         * [.close()](#Client.close)
-        * [.sendCommand(command, payload)](#Client.sendCommand) ⇒ <code>Promise.&lt;(object\|void)&gt;</code>
+        * [.sendCommand(command, payload)](#Client.sendCommand) ⇒ <code>Promise.&lt;object&gt;</code> \| <code>EventEmitter</code> \| <code>void</code>
         * [.setComputorUrl(index, url)](#Client.setComputorUrl)
         * [.open()](#Client.open)
         * [.computors()](#Client.computors) ⇒ <code>Array.&lt;string&gt;</code>
@@ -242,9 +233,9 @@ createTransfer({
 
 | Name | Type | Description |
 | --- | --- | --- |
-| hash | <code>string</code> | Hash of included transfer in uppercase hex. |
-| epoch | <code>number</code> | Epoch at which transfer was included. |
-| tick | <code>number</code> | Tick at which transfer was included. |
+| messageDigest | <code>string</code> | Hash of included transaction in uppercase hex. |
+| epoch | <code>number</code> | Epoch at which transaction was included. |
+| tick | <code>number</code> | Tick at which transaction was included. |
 
 
 <br><a name="Client+event_rejection"></a>
@@ -256,7 +247,7 @@ createTransfer({
 
 | Name | Type | Description |
 | --- | --- | --- |
-| hash | <code>string</code> | Hash of rejected transfer in uppercase hex. |
+| messageDigest | <code>string</code> | Hash of rejected transaction in uppercase hex. |
 | reason | <code>string</code> | Reason of rejection. |
 
 
@@ -266,16 +257,58 @@ createTransfer({
 > Client identity in uppercase hex.
 
 
-<br><a name="Client.createTransfer"></a>
+<br><a name="Client.transaction"></a>
 
-### Client.createTransfer(to) ⇒ <code>object</code>
-**Returns**: <code>object</code> - Transfer object.  
+### Client.transaction(params) ⇒ [<code>Transaction</code>](#Transaction)
+> Creates a transaction which includes a transfer of energy between 2 entities,
+> or an effect, or both. Transaction is atomic, meaaning that both transfer and
+> effect will be proccessed or none.
+> 
+> Transactions are stored in database and their inclusion or rejection are monitored.
+
+**Returns**: [<code>Transaction</code>](#Transaction) - Transaction object.  
 
 | Param | Type | Description |
 | --- | --- | --- |
-| to | <code>object</code> |  |
-| to.identity | <code>string</code> | Recipient identity in uppercase hex. |
-| to.energy | <code>bigint</code> | Transferred energy to recipient identity. |
+| params | <code>object</code> |  |
+| params.recipientIdentity | <code>string</code> | Recipient identity in uppercase hex. |
+| params.energy | <code>bigint</code> | Transferred energy to recipient identity. |
+| params.effectPayload | <code>TypedArray</code> | Effect payload. |
+
+
+<br><a name="Client.addEnvironmentListener"></a>
+
+### Client.addEnvironmentListener(environment, listener)
+> Subcribes to an environment.
+
+
+| Param | Type | Description |
+| --- | --- | --- |
+| environment | <code>string</code> | Environment hash. |
+| listener | <code>function</code> |  |
+
+**Example**  
+```js
+const listener = function (data) {
+  console.log(data);
+};
+
+client.addEvironmentListener(
+  'BPFJANADOGBDLNNONDILEMAICAKMEEGBFPJBKPBCEDFJIALDONODMAIMDBFKCFEE',
+  listener
+);
+```
+
+<br><a name="Client.removeEnvironmentListener"></a>
+
+### Client.removeEnvironmentListener(environment, listener)
+> Unsubscribes from an environment.
+
+
+| Param | Type | Description |
+| --- | --- | --- |
+| environment | <code>string</code> | Environment hash. |
+| listener | <code>function</code> |  |
 
 
 <br><a name="Client.terminate"></a>
@@ -306,23 +339,25 @@ createTransfer({
 
 <br><a name="Client.sendCommand"></a>
 
-### Client.sendCommand(command, payload) ⇒ <code>Promise.&lt;(object\|void)&gt;</code>
+### Client.sendCommand(command, payload) ⇒ <code>Promise.&lt;object&gt;</code> \| <code>EventEmitter</code> \| <code>void</code>
 > Sends a client command to each connected computor, and compares responses before resolving.
 > Available client commands:
 > 
-> | Command | Payload | Response | Description |
+> | Command | Request | Response | Description |
 > | --- | --- | --- | --- |
 > | `1` | `{ identity }` | `{ identity, identityNonce }` | Fetches `identityNonce`. |
 > | `2` | `{ identity }` | `{ identity, energy }` | Fetches `energy`. |
-> | `3` | `{ message, signature }` | `void` | Sends a transfer with `base64`-encoded `message` & `signature` fields. |
-> | `4` | `{ hash }` | `{ hash, inclusionState, tick, epoch }` or `{ hash, reason }` | Fetches status of a transfer. Rejects with reason in case account nonce has been overwritten. |
+> | `3` | `{ message, signature }` | `void` | Sends a transaction with `base64`-encoded `message` & `signature` fields. |
+> | `4` | `{ messageDigest }` | `{ messageDigest, inclusionState, tick, epoch }` or `{ messageDigest, reason }` | Fetches status of a transaction. Rejects with reason in case identity nonce has been overwritten. |
+> | `5` | `{ environmentDigest }` | `{ environmentDigest, epoch, tick, data }` | Subscribes to an environment by its digest. |
+> | `6` | `{ environmentDigest }` | `{ environmentDigest }` | Cancels environment subscription. |
 
 **Mixes**: [<code>sendCommand</code>](#Connection.sendCommand)  
 
 | Param | Type | Description |
 | --- | --- | --- |
 | command | <code>number</code> | Command index, must be an integer. |
-| payload | <code>object</code> | Payload. |
+| payload | <code>object</code> | Request payload. |
 
 
 <br><a name="Client.setComputorUrl"></a>
@@ -364,7 +399,7 @@ createTransfer({
         * ["close" (event)](#Connection+event_close)
     * _static_
         * [.close()](#Connection.close)
-        * [.sendCommand(command, payload)](#Connection.sendCommand) ⇒ <code>Promise.&lt;(object\|void)&gt;</code>
+        * [.sendCommand(command, payload)](#Connection.sendCommand) ⇒ <code>Promise.&lt;object&gt;</code> \| <code>EventEmitter</code> \| <code>void</code>
         * [.setComputorUrl(index, url)](#Connection.setComputorUrl)
         * [.open()](#Connection.open)
         * [.computors()](#Connection.computors) ⇒ <code>Array.&lt;string&gt;</code>
@@ -425,22 +460,24 @@ createTransfer({
 
 <br><a name="Connection.sendCommand"></a>
 
-### Connection.sendCommand(command, payload) ⇒ <code>Promise.&lt;(object\|void)&gt;</code>
+### Connection.sendCommand(command, payload) ⇒ <code>Promise.&lt;object&gt;</code> \| <code>EventEmitter</code> \| <code>void</code>
 > Sends a client command to each connected computor, and compares responses before resolving.
 > Available client commands:
 > 
-> | Command | Payload | Response | Description |
+> | Command | Request | Response | Description |
 > | --- | --- | --- | --- |
 > | `1` | `{ identity }` | `{ identity, identityNonce }` | Fetches `identityNonce`. |
 > | `2` | `{ identity }` | `{ identity, energy }` | Fetches `energy`. |
-> | `3` | `{ message, signature }` | `void` | Sends a transfer with `base64`-encoded `message` & `signature` fields. |
-> | `4` | `{ hash }` | `{ hash, inclusionState, tick, epoch }` or `{ hash, reason }` | Fetches status of a transfer. Rejects with reason in case account nonce has been overwritten. |
+> | `3` | `{ message, signature }` | `void` | Sends a transaction with `base64`-encoded `message` & `signature` fields. |
+> | `4` | `{ messageDigest }` | `{ messageDigest, inclusionState, tick, epoch }` or `{ messageDigest, reason }` | Fetches status of a transaction. Rejects with reason in case identity nonce has been overwritten. |
+> | `5` | `{ environmentDigest }` | `{ environmentDigest, epoch, tick, data }` | Subscribes to an environment by its digest. |
+> | `6` | `{ environmentDigest }` | `{ environmentDigest }` | Cancels environment subscription. |
 
 
 | Param | Type | Description |
 | --- | --- | --- |
 | command | <code>number</code> | Command index, must be an integer. |
-| payload | <code>object</code> | Payload. |
+| payload | <code>object</code> | Request payload. |
 
 
 <br><a name="Connection.setComputorUrl"></a>
@@ -476,6 +513,9 @@ createTransfer({
         * [.generatePublicKey(secretKey)](#Crypto.schnorrq.generatePublicKey) ⇒ <code>Uint8Array</code>
         * [.sign(secretKey, publicKey, message)](#Crypto.schnorrq.sign) ⇒ <code>Uint8Array</code>
         * [.verify(publicKey, message, signature)](#Crypto.schnorrq.verify) ⇒ <code>number</code>
+    * [.kex](#Crypto.kex) : <code>object</code>
+        * [.generateCompressedPublicKey(secretKey)](#Crypto.kex.generateCompressedPublicKey) ⇒ <code>Uint8Array</code>
+        * [.compressedSecretAgreement(secretKey, publicKey)](#Crypto.kex.compressedSecretAgreement) ⇒ <code>Uint8Array</code>
     * [.K12(input, output, outputLength, outputOffset)](#Crypto.K12)
 
 
@@ -521,6 +561,36 @@ createTransfer({
 | signature | <code>Uint8Array</code> | 
 
 
+<br><a name="Crypto.kex"></a>
+
+### Crypto.kex : <code>object</code>
+
+* [.kex](#Crypto.kex) : <code>object</code>
+    * [.generateCompressedPublicKey(secretKey)](#Crypto.kex.generateCompressedPublicKey) ⇒ <code>Uint8Array</code>
+    * [.compressedSecretAgreement(secretKey, publicKey)](#Crypto.kex.compressedSecretAgreement) ⇒ <code>Uint8Array</code>
+
+
+<br><a name="Crypto.kex.generateCompressedPublicKey"></a>
+
+#### kex.generateCompressedPublicKey(secretKey) ⇒ <code>Uint8Array</code>
+**Returns**: <code>Uint8Array</code> - Public key  
+
+| Param | Type |
+| --- | --- |
+| secretKey | <code>Uint8Array</code> | 
+
+
+<br><a name="Crypto.kex.compressedSecretAgreement"></a>
+
+#### kex.compressedSecretAgreement(secretKey, publicKey) ⇒ <code>Uint8Array</code>
+**Returns**: <code>Uint8Array</code> - Shared key  
+
+| Param | Type |
+| --- | --- |
+| secretKey | <code>Uint8Array</code> | 
+| publicKey | <code>Uint8Array</code> | 
+
+
 <br><a name="Crypto.K12"></a>
 
 ### Crypto.K12(input, output, outputLength, outputOffset)
@@ -531,4 +601,61 @@ createTransfer({
 | output | <code>Uint8Array</code> |  | 
 | outputLength | <code>number</code> |  | 
 | outputOffset | <code>number</code> | <code>0</code> | 
+
+
+<br><a name="TransferParams"></a>
+
+## TransferParams : <code>object</code>
+**Properties**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| seed | <code>string</code> | Seed in 55 lowercase latin chars. |
+| index | <code>number</code> | Index of private key which was used to derive sender identity. |
+| senderIdentity | <code>string</code> | Sender identity in uppercase hex. |
+| identityNonce | <code>number</code> | Identity nonce. |
+| energy | <code>bigint</code> | Transferred energy to recipient identity. |
+| recipientIdentity | <code>string</code> | Recipient identity in uppercase hex. |
+
+
+<br><a name="EffectParams"></a>
+
+## EffectParams : <code>object</code>
+**Properties**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| seed | <code>string</code> | Seed in 55 lowercase latin chars. |
+| index | <code>number</code> | Index of private key which was used to derive sender identity. |
+| senderIdentity | <code>string</code> | Sender identity in uppercase hex. |
+| identityNonce | <code>number</code> | Identity nonce. |
+| effectPayload | <code>Uint8Array</code> | Effect payload |
+
+
+<br><a name="TransferAndEffectParams"></a>
+
+## TransferAndEffectParams : <code>object</code>
+**Properties**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| seed | <code>string</code> | Seed in 55 lowercase latin chars. |
+| index | <code>number</code> | Index of private key which was used to derive sender identity. |
+| senderIdentity | <code>string</code> | Sender identity in shifted uppercase hex. |
+| identityNonce | <code>number</code> | Identity nonce. |
+| energy | <code>bigint</code> | Transferred energy to recipient identity. |
+| recipientIdentity | <code>string</code> | Recipient identity in shifted uppercase hex. |
+| effectPayload | <code>Uint8Array</code> | Effect payload |
+
+
+<br><a name="Transaction"></a>
+
+## Transaction : <code>object</code>
+**Properties**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| hash | <code>string</code> | Transaction hash in shifted uppercase hex. |
+| message | <code>string</code> | Base64-encoded signed message. |
+| signature | <code>string</code> | Base64-encoded signature. |
 

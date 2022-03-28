@@ -1,18 +1,41 @@
 'use strict';
 
-/**
- * @module qubic
- */
-
-export {
-  createIdentity,
+import {
+  identity,
   verifyChecksum,
   privateKey,
   seedChecksum,
   SEED_IN_LOWERCASE_LATIN_LENGTH,
   CHECKSUM_LENGTH,
   PUBLIC_KEY_LENGTH,
+  PUBLIC_KEY_LENGTH_IN_HEX,
 } from './identity.js';
-export { createConnection } from './connection.js';
-export { createClient } from './client.js';
-export { crypto } from './crypto/index.js';
+import { transfer } from './transfer.js';
+import { connection } from './connection.js';
+import { client } from './client.js';
+import { computor } from './computor.js';
+import { crypto } from './crypto/index.js';
+
+/**
+ * @module qubic
+ */
+const qubic = {
+  identity,
+  verifyChecksum,
+  privateKey,
+  seedChecksum,
+  transfer,
+  connection,
+  client,
+  computor,
+  crypto,
+};
+
+export default qubic;
+
+export {
+  SEED_IN_LOWERCASE_LATIN_LENGTH,
+  CHECKSUM_LENGTH,
+  PUBLIC_KEY_LENGTH,
+  PUBLIC_KEY_LENGTH_IN_HEX,
+};

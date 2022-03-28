@@ -45,8 +45,9 @@ export const crypto = new Promise(function (resolve) {
       };
 
       Module._SchnorrQ_KeyGeneration(sk.byteOffset, pk.byteOffset);
+      const key = pk.slice();
       free();
-      return pk.slice();
+      return key;
     };
 
     /**
@@ -76,8 +77,9 @@ export const crypto = new Promise(function (resolve) {
         message.length,
         s.byteOffset
       );
+      const sig = s.slice();
       free();
-      return s.slice();
+      return sig;
     };
 
     /**
@@ -107,8 +109,52 @@ export const crypto = new Promise(function (resolve) {
         s.byteOffset,
         v.byteOffset
       );
+      const ver = v[0];
       free();
-      return v[0];
+      return ver;
+    };
+
+    /**
+     * @memberof Crypto.kex
+     * @param {Uint8Array} secretKey
+     * @returns {Uint8Array} Public key
+     */
+    const generateCompressedPublicKey = function (secretKey) {
+      const sk = allocU8(secretKey.length, secretKey);
+      const pk = allocU8(32);
+
+      const free = function () {
+        Module._free(sk.byteOffset);
+        Module._free(pk.byteOffset);
+      };
+
+      Module._CompressedPublicKeyGeneration(sk.byteOffset, pk.byteOffset);
+      const key = pk.slice();
+      free();
+      return key;
+    };
+
+    /**
+     * @memberof Crypto.kex
+     * @param {Uint8Array} secretKey
+     * @param {Uint8Array} publicKey
+     * @returns {Uint8Array} Shared key
+     */
+    const compressedSecretAgreement = function (secretKey, publicKey) {
+      const sk = allocU8(secretKey.length, secretKey);
+      const pk = allocU8(publicKey.length, publicKey);
+      const shk = allocU8(32);
+
+      const free = function () {
+        Module._free(sk.byteOffset);
+        Module._free(pk.byteOffset);
+        Module._free(shk.byteOffset);
+      };
+
+      Module._CompressedSecretAgreement(sk.byteOffset, pk.byteOffset, shk.byteOffset);
+      const key = shk.slice();
+      free();
+      return key;
     };
 
     /**
@@ -128,7 +174,7 @@ export const crypto = new Promise(function (resolve) {
       };
 
       Module._KangarooTwelve(i.byteOffset, input.length, o.byteOffset, outputLength, 0, 0);
-      output.set(o, outputOffset);
+      output.set(o.slice(), outputOffset);
       free();
     };
 
@@ -141,10 +187,51 @@ export const crypto = new Promise(function (resolve) {
         sign,
         verify,
       },
+      /**
+       * @namespace Crypto.kex
+       */
+      kex: {
+        generateCompressedPublicKey,
+        compressedSecretAgreement,
+      },
       K12,
     });
 
-    // const message = new Uint8Array(1).fill(0).map((_, i) => i);
+    // const skA = [
+    //   125, 62, 16, 133, 107, 33, 255, 186, 215, 151, 156, 9, 225, 118, 213, 175, 41, 138, 90, 128,
+    //   198, 57, 176, 54, 161, 212, 50, 133, 236, 230, 186, 254,
+    // ];
+    // const pkA = generatePublicKey(skA);
+    // console.log(pkA);
+
+    // const skB = [
+    //   125, 62, 16, 143, 107, 33, 255, 186, 215, 151, 156, 9, 225, 118, 213, 175, 41, 138, 90, 128,
+    //   198, 57, 176, 54, 161, 212, 50, 133, 236, 230, 186, 0,
+    // ];
+    // const pkB = generatePublicKey(skB);
+
+    // const hSkB = new Uint8Array(64);
+    // K12(skB, hSkB, 64);
+    // const shk = compressedSecretAgreement(skB, pkA);
+    // console.log(shk);
+
+    // const hSkA = new Uint8Array(64);
+    // K12(skA, hSkA, 64);
+    // const shk2 = compressedSecretAgreement(skA, pkB);
+    // console.log(shk2);
+
+    // const v = [21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36];
+    // const aesCtr = new aesjs.ModeOfOperation.cbc(Buffer.from(shk), v);
+    // const enc = aesCtr.encrypt(skB);
+    // console.log(skB);
+    // console.log(enc.toString());
+    // const aesCtr2 = new aesjs.ModeOfOperation.cbc(Buffer.from(shk), v);
+    // const dec = aesCtr2.decrypt(enc);
+    // console.log(dec);
+
+    // const message = new Uint8Array(1).fill(0).map(function (_, i) {
+    //   return i;
+    // });
     // const h = new Uint8Array(32);
     // k12(message, h, h.length);
     // console.log(Array.from(h));

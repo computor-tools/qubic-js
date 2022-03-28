@@ -7,6 +7,7 @@ specifiers:
   '@babel/preset-env': ^7.15.8
   '@commitlint/cli': ^14.1.0
   '@commitlint/config-conventional': ^14.1.0
+  aes-js: ^3.1.2
   big-integer: ^1.6.50
   dmd-readable: ^1.2.4
   eslint: ^7.0.0
@@ -30,6 +31,7 @@ specifiers:
   ws: ^8.2.3
 
 dependencies:
+  aes-js: 3.1.2
   big-integer: 1.6.50
   eventemitter2: 6.4.5
   isomorphic-ws: 4.0.1_ws@8.2.3
@@ -1905,6 +1907,10 @@ packages:
     engines: {node: '>=0.4.0'}
     hasBin: true
     dev: true
+
+  /aes-js/3.1.2:
+    resolution: {integrity: sha512-e5pEa2kBnBOgR4Y/p20pskXI74UEz7de8ZGVo58asOtvSVG5YAbJeELPZxOmt+Bnz3rX753YKhfIn4X4l1PPRQ==}
+    dev: false
 
   /agent-base/6.0.2:
     resolution: {integrity: sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ==}
