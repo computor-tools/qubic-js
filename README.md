@@ -21,6 +21,7 @@ npm i qubic-js
 import * as qubic from 'qubic-js';
 ```
 
+---
 
 <br><a name="module_qubic"></a>
 
