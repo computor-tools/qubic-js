@@ -24,6 +24,7 @@ import {
   SIGNATURE_LENGTH,
 } from './transfer.js';
 import { seedToBytes, identity, privateKey, PUBLIC_KEY_LENGTH } from './identity.js';
+import { timestamp } from './timestamp.js';
 import { crypto } from './crypto/index.js';
 import level from 'level';
 import path from 'path';
@@ -125,10 +126,11 @@ export const client = function ({
 
     const hashes = new Set();
     const hashesByIndex = new Map();
-    const transfers = [];
+    const transfers = new Set();
     const transferStatuses = [];
     const receipts = [];
     let counter = 0;
+    let latestUnprocessedTransaction = { index: -1, decryptedValue: [], timestamp: 0n };
     let resolveAESCounter;
     let AESCounter = new Promise(function (resolve) {
       resolveAESCounter = resolve;
@@ -269,7 +271,6 @@ export const client = function ({
             case 0:
               {
                 // unprocessed  transfer
-                connection.broadcastTransfer(decryptedValue.slice(1));
                 const digest = new Uint8Array(HASH_LENGTH);
                 const message = decryptedValue.subarray(1, 1 + SIGNATURE_OFFSET);
                 message[0] ^= 1;
@@ -287,7 +288,13 @@ export const client = function ({
                   K12(bytes, hashBytes, HASH_LENGTH);
                   hashesByIndex.set(parseInt(data.key), hashBytes);
                   const transfer = await transferObject(bytes, hashBytes);
-                  transfers.push(transfer);
+
+                  if(latestUnprocessedTransaction.index < parseInt(data.key)) {
+                    latestUnprocessedTransaction.index = parseInt(data.key);
+                    latestUnprocessedTransaction.decryptedValue = decryptedValue.slice(1);
+                    latestUnprocessedTransaction.timestamp = transfer.timestamp;
+                  }
+                  transfers.add(transfer);
                   const hash = bytesToShiftedHex(hashBytes).toUpperCase();
                   hashes.add(hash);
                   processTransferStatus({
@@ -298,6 +305,8 @@ export const client = function ({
                     energy: transfer.energy,
                     counter: parseInt(data.key),
                   });
+                } else {
+                  console.error(`Unprocessed tx db sig failed!`);
                 }
               }
               break;
@@ -439,7 +448,7 @@ export const client = function ({
 
                   hashesByIndex.set(parseInt(data.key), hashBytes);
 
-                  transfers.push(await transferObject(bytes, hashBytes));
+                  transfers.add(await transferObject(bytes, hashBytes));
                   const hash = bytesToShiftedHex(hashBytes).toUpperCase();
                   hashes.add(hash);
 
@@ -457,6 +466,8 @@ export const client = function ({
                     receiptBase64: Buffer.from(decryptedValue.slice(1)).toString('base64'),
                   });
                 }
+              } else {
+                console.error(`Processed Transfer DB Sig failed Verification! ${data.key}`);
               }
             }
           }
@@ -480,9 +491,33 @@ export const client = function ({
         ) {
           resolveAESCounter();
           that.emit('energy', energy);
+          let txferDataMap = {};
+          transfers.forEach(function (transfer) {
+            let key = `${transfer.destination}-${transfer.energy}-${transfer.timestamp}`;
+            if(txferDataMap.hasOwnProperty(key)) {
+              console.log(`Deleting duplicate transfer before send to UI: ${transfer.hash}`);
+              transfers.delete(transfer);
+            } else {
+              txferDataMap[key] = true;
+            }
+          });
           transfers.forEach(function (transfer) {
             that.emit('transfer', transfer);
           });
+
+          if(latestUnprocessedTransaction.index > -1) {
+            let ts = timestamp();
+            let secsElapsedSinceLastTx =
+              (ts - latestUnprocessedTransaction.timestamp) / BigInt(1000000000);
+            if(secsElapsedSinceLastTx >= 60) {
+              console.log('rebroadcasting latest tx');
+              connection.broadcastTransfer(latestUnprocessedTransaction.decryptedValue);
+              latestUnprocessedTransaction.index = -1;
+              latestUnprocessedTransaction.decryptedValue = [];
+            }
+          }
+
+
           transferStatuses.forEach(function (status) {
             that.emit('transferStatus', status);
           });
@@ -793,7 +828,7 @@ export const client = function ({
                   energy = energyCopy;
                 }
 
-                transfers.push(transfer);
+                transfers.add(transfer);
                 hashes.add(transfer.hash);
               }
             }
