@@ -289,7 +289,7 @@ export const client = function ({
                   hashesByIndex.set(parseInt(data.key), hashBytes);
                   const transfer = await transferObject(bytes, hashBytes);
 
-                  if(latestUnprocessedTransaction.index < parseInt(data.key)) {
+                  if (latestUnprocessedTransaction.index < parseInt(data.key)) {
                     latestUnprocessedTransaction.index = parseInt(data.key);
                     latestUnprocessedTransaction.decryptedValue = decryptedValue.slice(1);
                     latestUnprocessedTransaction.timestamp = transfer.timestamp;
@@ -494,7 +494,7 @@ export const client = function ({
           let txferDataMap = {};
           transfers.forEach(function (transfer) {
             let key = `${transfer.destination}-${transfer.energy}-${transfer.timestamp}`;
-            if(txferDataMap.hasOwnProperty(key)) {
+            if (txferDataMap.hasOwnProperty(key)) {
               console.log(`Deleting duplicate transfer before send to UI: ${transfer.hash}`);
               transfers.delete(transfer);
             } else {
@@ -505,18 +505,17 @@ export const client = function ({
             that.emit('transfer', transfer);
           });
 
-          if(latestUnprocessedTransaction.index > -1) {
+          if (latestUnprocessedTransaction.index > -1) {
             let ts = timestamp();
             let secsElapsedSinceLastTx =
               (ts - latestUnprocessedTransaction.timestamp) / BigInt(1000000000);
-            if(secsElapsedSinceLastTx >= 60) {
+            if (secsElapsedSinceLastTx >= 60) {
               console.log('rebroadcasting latest tx');
               connection.broadcastTransfer(latestUnprocessedTransaction.decryptedValue);
               latestUnprocessedTransaction.index = -1;
               latestUnprocessedTransaction.decryptedValue = [];
             }
           }
-
 
           transferStatuses.forEach(function (status) {
             that.emit('transferStatus', status);
@@ -924,6 +923,7 @@ export const client = function ({
       },
 
       async setEnergy(value) {
+        value = BigInt(value);
         const energyBytes = new Uint8Array(8);
         const energyView = new DataView(energyBytes.buffer);
         energyView.setBigUint64(0, value, true);
