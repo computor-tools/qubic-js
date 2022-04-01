@@ -22,6 +22,8 @@ import {
   transferObject,
   TRANSFER_LENGTH,
   SIGNATURE_LENGTH,
+  SOURCE_LENGTH,
+  SOURCE_OFFSET,
 } from './transfer.js';
 import { seedToBytes, identity, privateKey, PUBLIC_KEY_LENGTH } from './identity.js';
 import { timestamp } from './timestamp.js';
@@ -321,7 +323,7 @@ export const client = function ({
               let offset = 1 + SIGNATURE_OFFSET;
               if (
                 schnorrq.verify(
-                  schnorrq.generatePublicKey(privateKey(seed, index, K12)),
+                  decryptedValue.subarray(1 + SOURCE_OFFSET, 1 + SOURCE_OFFSET + SOURCE_LENGTH),
                   digest,
                   decryptedValue.subarray(offset, (offset += SIGNATURE_LENGTH))
                 ) === 1
