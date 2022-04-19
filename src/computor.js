@@ -4,7 +4,7 @@ import { privateKey } from './identity.js';
 import { timestamp } from './timestamp.js';
 import { bytesToShiftedHex } from './utils/hex.js';
 
-const PROTOCOL_VERSION = 5;
+const PROTOCOL_VERSION = 256;
 const REQUEST = 0;
 
 const SIZE_OFFSET = 0;
