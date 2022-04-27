@@ -15,6 +15,7 @@ import { connection } from './connection.js';
 import { client } from './client.js';
 import { computor } from './computor.js';
 import { crypto } from './crypto/index.js';
+import { shiftedHexToBytes } from './utils/hex.js';
 
 /**
  * @module qubic
@@ -29,6 +30,7 @@ const qubic = {
   client,
   computor,
   crypto,
+  shiftedHexToBytes
 };
 
 export default qubic;
